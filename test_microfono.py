@@ -21,6 +21,6 @@ signal = audio.flatten()
 extractor = MetricsExtractor()
 
 # Ejemplo: nota La 440Hz
-metrics = extractor.evaluate(signal, sample_rate, 440)
+metrics = extractor.evaluate(signal, sample_rate, 261.63)
 
 print("Resultados:", metrics)
