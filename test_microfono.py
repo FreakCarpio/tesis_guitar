@@ -20,7 +20,21 @@ signal = audio.flatten()
 
 extractor = MetricsExtractor()
 
-# Ejemplo: nota La 440Hz
-metrics = extractor.evaluate(signal, sample_rate, 261.63)
+# 1️⃣ Detectar frecuencia fundamental
+freq_detected = extractor.detect_pitch(signal, sample_rate)
 
-print("Resultados:", metrics)
+# 2️⃣ Convertir frecuencia a nota musical
+def frequency_to_note(freq):
+    note_names = ["C", "C#", "D", "D#", "E", "F",
+                  "F#", "G", "G#", "A", "A#", "B"]
+    
+    midi_number = round(69 + 12 * np.log2(freq / 440.0))
+    note = note_names[midi_number % 12]
+    octave = (midi_number // 12) - 1
+    
+    return f"{note}{octave}"
+
+note_detected = frequency_to_note(freq_detected)
+
+print("Frecuencia detectada:", round(freq_detected, 2), "Hz")
+print("Nota detectada:", note_detected)
