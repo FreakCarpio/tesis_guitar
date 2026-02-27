@@ -20,10 +20,10 @@ signal = audio.flatten()
 
 extractor = MetricsExtractor()
 
-# 1️⃣ Detectar frecuencia fundamental
+#  Detectar frecuencia fundamental
 freq_detected = extractor.detect_pitch(signal, sample_rate)
 
-# 2️⃣ Convertir frecuencia a nota musical
+# Convertir frecuencia a nota musical
 def frequency_to_note(freq):
     note_names = ["C", "C#", "D", "D#", "E", "F",
                   "F#", "G", "G#", "A", "A#", "B"]

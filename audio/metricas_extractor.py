@@ -6,8 +6,11 @@ class MetricsExtractor:
     def __init__(self):
         self.fft = FFTAnalyzer()
 
+    def detect_pitch(self, signal, sample_rate):
+        return self.fft.dominant_frequency(signal, sample_rate)
+
     def evaluate(self, signal, sample_rate, target_freq):
-        detected_freq = self.fft.dominant_frequency(signal, sample_rate)
+        detected_freq = self.detect_pitch(signal, sample_rate)
 
         error = abs(detected_freq - target_freq)
 
