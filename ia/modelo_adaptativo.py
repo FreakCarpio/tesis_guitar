@@ -14,4 +14,5 @@ class modelo_adaptativo:
         profile.error_avg = ( 
             self.alpha * profile.error_avg + (1 - self.alpha) * error #Actualiza el promedio de error permite seguir la evolución del usuario en fallos o desviaciones
         )
+        profile.sessions += 1
         return profile # Regresa el perfil actualizado

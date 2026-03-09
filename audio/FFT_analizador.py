@@ -29,7 +29,7 @@ class FFTAnalyzer:
         signal = signal - np.mean(signal)
 
         rms = np.sqrt(np.mean(signal ** 2))
-        if rms < 0.01:
+        if rms < 0.002:
             return 0.0, 0.0, []
 
         frequencies, magnitude = self.compute_fft(signal, sample_rate)
@@ -41,6 +41,7 @@ class FFTAnalyzer:
 
         freqs = frequencies[mask]
         mags = magnitude[mask]
+        mags = self.harmonic_product_spectrum(mags)
 
         # Tomar los 15 picos más fuertes
         n_peaks = 15
@@ -123,3 +124,12 @@ class FFTAnalyzer:
         df = frequencies[1] - frequencies[0]
 
         return frequencies[peak_index] + p * df
+def harmonic_product_spectrum(self, magnitude):
+
+    hps = magnitude.copy()
+
+    for factor in range(2, 5):
+        decimated = magnitude[::factor]
+        hps[:len(decimated)] *= decimated
+
+    return hps

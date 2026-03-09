@@ -2,7 +2,6 @@ import numpy as np
 import sounddevice as sd
 from audio.metricas_extractor import MetricsExtractor
 
-
 def main():
     duration = 3
     sample_rate = 44100

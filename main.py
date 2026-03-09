@@ -1,23 +1,53 @@
-from fastapi import FastAPI # Importamos FastAPI para crear la API REST del sistema # Importamos FastAPI para crear la API REST del sistema
-from domain.modelo import UserProfile # Importamos el perfil del usuario donde se guardan métricas promedio
-from ia.modelo_adaptativo import modelo_adaptativo # Importamos el perfil del usuario donde se guardan métricas promedio
+from fastapi import FastAPI, UploadFile, File
+import shutil
+import os
+from domain.modelo import UserProfile
+from ia.modelo_adaptativo import modelo_adaptativo
+from analizador_señales.señal import SignalAnalyzer
+from routes.practicas import router as practicas_router
+from routes.wilfredo import router as wilfredo_router
 
-app = FastAPI() # Creamos la aplicación FastAPI
-model = modelo_adaptativo() #Instancia del modelo adaptativo se usará para actualizar métricas después de cada práctica
-profiles = {} # Diccionario en memoria para almacenar perfiles de usuarios clave = user_id, valor = UserProfile
+app = FastAPI()
 
-@app.post("/practica") # Endpoint POST para registrar una sesión de práctica
-def practice(data: dict):  
-    user_id = data["user_id"]# Obtenemos el identificador del usuario desde el JSON recibido
+app.include_router(practicas_router)
+app.include_router(wilfredo_router)
 
-    if user_id not in profiles: # Si el usuario no existe aún, creamos un perfil nuevo
+model = modelo_adaptativo()
+analyzer = SignalAnalyzer()
+
+profiles = {}
+
+
+@app.post("/practica")
+async def practice(user_id: str, file: UploadFile = File(...)):
+
+    # crear perfil si no existe
+    if user_id not in profiles:
         profiles[user_id] = UserProfile()
 
-    profiles[user_id] = model.update( # Actualizamos el perfil usando el modelo adaptativo # los valores vienen del análisis musical previo (ej. FFT/STFT)
+    filepath = f"temp_{file.filename}"
+
+    with open(filepath, "wb") as buffer:
+        shutil.copyfileobj(file.file, buffer)
+
+    # -------- ANALISIS DE AUDIO --------
+    metrics = analyzer.analyze_file(filepath)
+
+    os.remove(filepath)
+
+    precision = metrics["precision"]
+    consistencia = metrics["consistencia"]
+    error = metrics["error"]
+
+    # -------- IA ADAPTATIVA --------
+    profiles[user_id] = model.update(
         profiles[user_id],
-        data["precision"],
-        data["consistencia"],
-        data["error"]
+        precision,
+        consistencia,
+        error
     )
 
-    return profiles[user_id] # Regresamos el perfil actualizado como respuesta de la API
+    return {
+        "metrics": metrics,
+        "profile": profiles[user_id]
+    }

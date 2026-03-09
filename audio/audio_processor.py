@@ -2,12 +2,13 @@ import numpy as np
 import sounddevice as sd
 from audio.FFT_analizador import FFTAnalyzer
 from audio.metricas_extractor import MetricsExtractor
+from scipy.io.wavfile import write
+import datetime
 
 class AudioProcessor:
     """
     Procesador de audio completo con umbral adaptativo de silencio.
     """
-    
     def __init__(self, sample_rate=44100, calibration_duration=1.0):
         self.sample_rate = sample_rate
         self.fft = FFTAnalyzer()
@@ -26,13 +27,18 @@ class AudioProcessor:
         """
         print(f"Calibrando silencio ({duration}s)... No toques nada.")
         
-        audio = sd.rec(int(duration * self.sample_rate),
+        audio = sd.rec(
+                       int(duration * self.sample_rate),
                        samplerate=self.sample_rate,
                        channels=1,
-                       dtype='float64')
+                       dtype='float64',
+                       device=1
+        )
         sd.wait()
         
         signal = audio.flatten()
+        save_sesiones(signal, self.sample_rate) # Guardar sesión
+        # continuar análisis
         
         # Estimar piso de ruido (percentil 50 para ser robusto a picos)
         self.noise_floor = np.percentile(np.abs(signal), 50)
@@ -85,8 +91,10 @@ class AudioProcessor:
                           samplerate=self.sample_rate,
                           channels=1,
                           dtype='float64',
+                          device=1,
                           blocking=True)
             signal_chunk = chunk.flatten()
+            all_frames.append(signal_chunk)
             
             # Verificar si hay señal
             if self.has_signal(signal_chunk):
@@ -109,15 +117,17 @@ class AudioProcessor:
                     print("\nDeteniendo por silencio...")
                     break
         
-        print()  # Nueva línea
+        print() 
         
         # Concatenar todo el audio grabado para análisis final
         # (En implementación real, guardaríamos los chunks)
-        full_audio = sd.rec(int(len(all_frames) * chunk_duration * self.sample_rate),
-                           samplerate=self.sample_rate,
-                           channels=1,
-                           dtype='float64',
-                           blocking=True).flatten() if all_frames else np.zeros(1000)
+        if all_frames:
+         full_audio = np.concatenate(all_frames)
+        else:
+         full_audio = np.zeros(1000)
+         
+         # Guardar la sesión real grabada
+        save_sesiones(full_audio, self.sample_rate)
         
         # Análisis final
         if target_freq:
@@ -175,6 +185,12 @@ def quick_test():
             print(f"{key}: {value}")
     
     return result
+
+def save_sesiones(signal, sample_rate):
+    filename = f"sesiones/sesion_{datetime.datetime.now().timestamp()}.wav"
+    write(filename, sample_rate, signal.astype("int16"))
+    print(f"Sesión guardada en: {filename}")
+    return filename
 
 if __name__ == "__main__":
     quick_test()
