@@ -5,12 +5,14 @@ from domain.modelo import UserProfile
 from ia.modelo_adaptativo import modelo_adaptativo
 from analizador_señales.señal import SignalAnalyzer
 from routes.practicas import router as practicas_router
-from routes.wilfredo import router as wilfredo_router
+from routes.wilfredo_routes import router as wilfredo_router
+from routes.tuner import router as tuner_router
 
 app = FastAPI()
 
 app.include_router(practicas_router)
 app.include_router(wilfredo_router)
+app.include_router(tuner_router)
 
 model = modelo_adaptativo()
 analyzer = SignalAnalyzer()
