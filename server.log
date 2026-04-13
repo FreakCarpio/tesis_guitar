@@ -1,0 +1,12 @@
+INFO:     Started server process [11140]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
+INFO:     127.0.0.1:52026 - "POST /wilfredo/chat HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52029 - "POST /wilfredo/analyze HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52031 - "POST /wilfredo/plan HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52034 - "POST /tuner/pitch HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52036 - "POST /tuner/verify HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52038 - "POST /wilfredo/tuner HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52041 - "POST /wilfredo/chord HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49358 - "POST /tuner/identify HTTP/1.1" 200 OK

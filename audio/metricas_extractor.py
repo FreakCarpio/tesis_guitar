@@ -213,3 +213,56 @@ class MetricsExtractor:
                     }
 
         return {'nombre': '-'.join(notas_unicas), 'tipo': 'Desconocido', 'raiz': notas_unicas[0], 'notas': notas_unicas, 'picos': picos}
+
+    def identify_chord_from_notes(self, notas: list) -> dict:
+        """
+        Identifica un acorde desde una lista de notas
+        
+        Este método permite identificar un acorde pasando
+        directamente las notas musicales, sin necesidad
+        de procesar un archivo de audio.
+        
+        Args:
+            notas: Lista de notas (ej: ["A", "C#", "E"])
+            
+        Returns:
+            Diccionario con información del acorde
+        """
+        if not notas or len(notas) < 2:
+            return None
+            
+        note_names = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
+        
+        # Convierto notas a índices
+        nota_indices = []
+        for n in notas:
+            try:
+                # Quitooctava si la tiene
+                nota_limpia = n[:-1] if n[-1].isdigit() else n
+                nota_limpia = nota_limpia.replace("#", "S").replace("S", "#")
+                if "#" in nota_limpia:
+                    nota_limpia = nota_limpia.replace("#", "S")
+                    nota_limpia = nota_limpia.replace("S", "#")
+                nota_indices.append(note_names.index(nota_limpia))
+            except ValueError:
+                continue
+                
+        if len(nota_indices) < 2:
+            return {'nombre': '-'.join(notas), 'tipo': 'Desconocido', 'raiz': notas[0], 'notas': notas}
+        
+        # Comparo con plantillas de acordes
+        for raiz in nota_indices:
+            for tipo, intervalos in self.CHORD_TEMPLATES.items():
+                notas_acorde = sorted([(raiz + i) % 12 for i in intervalos])
+                notas_encontradas = sorted(nota_indices)
+                
+                if all(n in notas_encontradas for n in notas_acorde):
+                    sufijo = '' if tipo == 'Mayor' else 'm' if tipo == 'Menor' else '7' if tipo == 'Séptima' else 'm7' if tipo == 'Menor7' else '5'
+                    return {
+                        'nombre': f"{note_names[raiz]}{sufijo}",
+                        'tipo': tipo,
+                        'raiz': note_names[raiz],
+                        'notas': notas
+                    }
+                    
+        return {'nombre': '-'.join(notas), 'tipo': 'Desconocido', 'raiz': notas[0], 'notas': notas}
