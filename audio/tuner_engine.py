@@ -529,8 +529,8 @@ class TunerEngine:
         self.wiener_filter.calibrate(preprocessed)
 
     def analyze_frame(self, signal: np.ndarray,
-                      use_spectral_reduction: bool = True,
-                      validate_guitar: bool = True) -> Dict:
+                      use_spectral_reduction: bool = False,
+                      validate_guitar: bool = False) -> Dict:
         """
         Analiza un frame de audio y retorna resultados completos.
 
@@ -620,24 +620,35 @@ class TunerEngine:
         self.freq_buffer.clear()
         self.conf_buffer.clear()
 
+        # Apply spectral reduction ONCE on the entire signal (not per-frame)
+        # Esto evita el costo O(N*M) de aplicar STFT/ISTFT en cada frame
+        cleaned = analysis_signal.copy()
+        if use_spectral_reduction:
+            cleaned = self.preprocessor.process(cleaned)
+            if self.spectral_reducer.calibrated:
+                cleaned = self.spectral_reducer.process(cleaned)
+            else:
+                cleaned = self.wiener_filter.process(cleaned)
+        else:
+            cleaned = self.preprocessor.process(cleaned)
+
         frame_size = int(sample_rate * 0.15)
         hop_size = frame_size // 2
 
         results = []
 
-        for start in range(0, len(analysis_signal) - frame_size + 1, hop_size):
-            frame = analysis_signal[start:start + frame_size]
-            result = self.analyze_frame(
-                frame,
-                use_spectral_reduction=use_spectral_reduction,
-                validate_guitar=False
-            )
+        for start in range(0, len(cleaned) - frame_size + 1, hop_size):
+            frame = cleaned[start:start + frame_size]
+            rms = np.sqrt(np.mean(frame ** 2))
+            if rms < MIN_RMS_THRESHOLD:
+                continue
+            freq, confidence, _ = self.pitch_detector.detect(frame)
 
-            if not result["hay_señal"] or result["confianza"] < 0.3:
+            if confidence < 0.3:
                 continue
 
-            self.freq_buffer.append(result["frecuencia"])
-            self.conf_buffer.append(result["confianza"])
+            self.freq_buffer.append(freq)
+            self.conf_buffer.append(confidence)
 
             if len(self.freq_buffer) >= 3:
                 freq_stable = float(np.median(self.freq_buffer))
