@@ -5,7 +5,7 @@ router = APIRouter()
 
 analyzer = SignalAnalyzer()
 
-@router.post("/practica")
+@router.post("/practica/analyze")
 async def analyze_practice(audio: UploadFile = File(...)):
 
     file_path = f"/tmp/{audio.filename}"

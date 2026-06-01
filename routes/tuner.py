@@ -18,6 +18,10 @@ from typing import Optional, List
 import numpy as np
 import io
 from audio.metricas_extractor import MetricsExtractor
+from audio.tuner_engine import TunerEngine, frequency_to_note_info
+from audio.audio_filters import AudioPreprocessor
+from audio.noise_reduction import SpectralNoiseReducer, WienerFilterNoiseReducer
+from audio.pipeline_validator import PipelineValidator
 
 # Se crea el router con prefijo /tuner para todas las rutas
 # Esto significa que todos los endpoints starts con /tuner/
@@ -27,6 +31,14 @@ router = APIRouter(prefix="/tuner", tags=["tuner"])
 # Se inicializa el extractor de métricas para análisis de audio
 # Este objeto se usa para procesar archivos de audio
 extractor = MetricsExtractor()
+
+# Motor de afinación con pipeline DSP completo (filtros + detección + estabilización)
+# Usado por los endpoints mejorados /tuner/analyze, /tuner/analyze/file
+tuner_engine = TunerEngine(sample_rate=44100)
+
+# Validador del pipeline para diagnóstico y comparación antes/después
+# Útil para tesis: cuantifica la mejora de cada etapa
+pipeline_validator = PipelineValidator(sample_rate=44100)
 
 
 # ==============================================================================
@@ -118,25 +130,30 @@ def audio_from_upload(file: UploadFile) -> tuple:
     Returns:
         Tupla (signal, sample_rate)
     """
+    # Leer el archivo una sola vez para evitar consumir el stream
+    audio_bytes = file.file.read()
+    
     try:
         # Intento usar soundfile para leer el audio
         import soundfile as sf
-        bytes_io = io.BytesIO(file.file.read())
+        bytes_io = io.BytesIO(audio_bytes)
         signal, sample_rate = sf.read(bytes_io)
         # Si es estéreo, convertir a mono
         if len(signal.shape) > 1:
             signal = signal.mean(axis=1)
-    except ImportError:
-        # Si no hay soundfile, usar sounddevice
+    except Exception:
+        # Si no hay soundfile o falla, usar sounddevice
         import sounddevice as sd
         import tempfile
         import os
-        bytes_io = io.BytesIO(file.file.read())
         with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as tmp:
-            tmp.write(bytes_io.read())
+            tmp.write(audio_bytes)
             tmp_path = tmp.name
-        signal, sample_rate = sd.read(tmp_path)
-        os.remove(tmp_path)
+        try:
+            signal, sample_rate = sd.read(tmp_path)
+        finally:
+            if os.path.exists(tmp_path):
+                os.remove(tmp_path)
 
     # Normalizo la señal - divido por el valor máximo
     signal = signal.astype(np.float64)
@@ -437,3 +454,340 @@ async def detect_chord_from_file(file: UploadFile = File(...)):
         
     except Exception as e:
         return error_response(f"Error al procesar archivo: {str(e)}")
+
+
+# ==============================================================================
+# ENDPOINTS MEJORADOS - Con pipeline DSP completo
+# ==============================================================================
+
+@router.post("/analyze")
+async def tuner_analyze(req: PitchRequest):
+    """
+    Endpoint mejorado: detecta nota con pipeline DSP completo.
+
+    Este endpoint toma una frecuencia (como el /pitch original) pero
+    además retorna información detallada: cuerda de guitarra, dirección
+    de ajuste, estado de afinación, etc.
+
+    Útil cuando el cliente ya ha procesado el audio y solo envía
+    la frecuencia detectada.
+
+    Request (JSON):
+        {
+            "frecuencia": 440.0
+        }
+
+    Response (JSON):
+        {
+            "success": true,
+            "data": {
+                "nota": "A4",
+                "frecuencia": 440.0,
+                "frecuencia_teorica": 440.0,
+                "cents": 0.0,
+                "cuerda": "N/A",
+                "afinado": true,
+                "direccion": "afinado"
+            }
+        }
+    """
+    try:
+        freq = req.frecuencia
+        if freq <= 0 or freq > 5000:
+            return error_response("Frecuencia fuera de rango válido (20-5000 Hz)")
+
+        note_info = frequency_to_note_info(freq)
+
+        cents_val = float(note_info["cents"])
+        return success_response({
+            "nota": note_info["nota_completa"],
+            "frecuencia": float(freq),
+            "frecuencia_teorica": float(note_info["freq_teorica"]),
+            "cents": round(cents_val, 2),
+            "cuerda": note_info["cuerda"],
+            "afinado": bool(abs(cents_val) < 5),
+            "direccion": tuner_engine.get_tuning_direction(cents_val)
+        })
+
+    except Exception as e:
+        return error_response(f"Error al analizar: {str(e)}")
+
+
+@router.post("/analyze/file")
+async def tuner_analyze_file(file: UploadFile = File(...)):
+    """
+    Endpoint mejorado: detecta nota desde archivo de audio con pipeline DSP.
+
+    Este endpoint utiliza el pipeline completo:
+    1. Notch filters (50/60/120 Hz) - elimina ruido eléctrico
+    2. Band-pass filter (60-1200 Hz) - enfoca en rango de guitarra
+    3. Noise gate - elimina ruido ambiente
+    4. Reducción espectral de ruido (si calibrado)
+    5. Detección multi-algoritmo (HPS + Autocorrelación)
+    6. Estabilización temporal (mediana móvil)
+    7. Validación de cuerda de guitarra
+
+    Response (JSON):
+        {
+            "success": true,
+            "data": {
+                "frecuencia": 440.0,
+                "nota": "A4",
+                "cents": 0.0,
+                "cuerda": null,
+                "confianza": 0.95,
+                "hay_señal": true,
+                "afinado": true,
+                "direccion": "afinado"
+            }
+        }
+    """
+    try:
+        signal, sample_rate = audio_from_upload(file)
+
+        result = tuner_engine.analyze_file(signal, sample_rate)
+
+        if result["frames_analizados"] == 0:
+            return error_response("Silencio o señal no detectada")
+
+        freq = result["frecuencia"]
+        note_info = frequency_to_note_info(freq)
+
+        return success_response({
+            "frecuencia": round(freq, 2),
+            "frecuencia_promedio": round(result.get("frecuencia_promedio", freq), 2),
+            "nota": result["nota"],
+            "cents": round(result["cents"], 2),
+            "cuerda": note_info["cuerda"],
+            "confianza": round(result["confianza_promedio"], 3),
+            "estabilidad": round(result.get("estabilidad", 0), 3),
+            "frames_analizados": result["frames_analizados"],
+            "hay_señal": True,
+            "afinado": result["afinado"],
+            "direccion": tuner_engine.get_tuning_direction(result["cents"])
+        })
+
+    except Exception as e:
+        return error_response(f"Error al procesar con pipeline DSP: {str(e)}")
+
+
+@router.post("/analyze/raw")
+async def tuner_analyze_raw(file: UploadFile = File(...)):
+    """
+    Endpoint para análisis frame a frame (baja latencia).
+
+    Procesa el audio en frames pequeños (~100ms) y retorna resultados
+    por cada frame. Ideal para visualización en tiempo real desde la
+    app móvil.
+
+    Args:
+        file: Archivo de audio corto (recomendado: 0.5-2 segundos)
+
+    Response (JSON):
+        {
+            "success": true,
+            "data": {
+                "frames": [
+                    {
+                        "frecuencia": 440.0,
+                        "nota": "A4",
+                        "cents": 0.0,
+                        "confianza": 0.95
+                    }
+                ],
+                "frame_duration_ms": 100
+            }
+        }
+    """
+    try:
+        signal, sample_rate = audio_from_upload(file)
+
+        frame_size = int(sample_rate * 0.1)
+        hop_size = frame_size // 2
+
+        frames_result = []
+        for start in range(0, len(signal) - frame_size + 1, hop_size):
+            frame = signal[start:start + frame_size]
+            result = tuner_engine.analyze_frame(frame)
+            if result["hay_señal"]:
+                frames_result.append({
+                    "frecuencia": round(result["frecuencia"], 2),
+                    "nota": result["nota"],
+                    "cents": round(result["cents"], 2),
+                    "confianza": round(result["confianza"], 3),
+                    "cuerda": result["cuerda"]
+                })
+
+        return success_response({
+            "frames": frames_result,
+            "total_frames": len(frames_result),
+            "frame_duration_ms": 100
+        })
+
+    except Exception as e:
+        return error_response(f"Error en análisis raw: {str(e)}")
+
+
+@router.post("/calibrate")
+async def tuner_calibrate(file: UploadFile = File(...)):
+    """
+    Endpoint para calibrar la reducción de ruido espectral.
+
+    Envía una muestra de 1-2 segundos de solo ruido ambiente
+    (sin tocar la guitarra). El sistema aprende el piso de ruido
+    y lo usará para filtrar en análisis posteriores.
+
+    Args:
+        file: Muestra de audio ambiental (1-2 segundos, sin guitarra)
+
+    Response (JSON):
+        {
+            "success": true,
+            "data": {
+                "calibrado": true,
+                "mensaje": "Ruido ambiental calibrado correctamente"
+            }
+        }
+    """
+    try:
+        signal, sample_rate = audio_from_upload(file)
+
+        tuner_engine.calibrate_noise(signal)
+
+        return success_response({
+            "calibrado": True,
+            "mensaje": "Ruido ambiental calibrado correctamente. El afinador ahora ignorará el ruido de fondo."
+        })
+
+    except Exception as e:
+        return error_response(f"Error al calibrar: {str(e)}")
+
+
+@router.get("/pipeline")
+async def tuner_pipeline_info():
+    """
+    Endpoint informativo: retorna la descripción del pipeline DSP.
+
+    Útil para documentación de tesis y debugging.
+    Muestra cada etapa del procesamiento con su justificación técnica.
+
+    Response (JSON):
+        {
+            "success": true,
+            "data": {
+                "pipeline": [
+                    {
+                        "etapa": 1,
+                        "nombre": "Notch Filter (50/60/120 Hz)",
+                        "proposito": "Eliminar zumbido eléctrico de red",
+                        "tipo": "IIR Notch, Q=30"
+                    }
+                ]
+            }
+        }
+    """
+    try:
+        preprocessor = AudioPreprocessor()
+        etapas = preprocessor.get_pipeline_description()
+
+        return success_response({
+            "pipeline": etapas,
+            "algoritmos_pitch": [
+                "FFT directo con interpolación parabólica (principal)",
+                "Autocorrelación YIN simplificado (verificación)",
+                "HPS - Harmonic Product Spectrum (coherencia armónica)"
+            ],
+            "fusion_sensores": "Sensor fusion por mayoría ponderada (FFT + AC + HPS)",
+            "estabilizacion": "Mediana móvil ponderada por confianza sobre 7 frames",
+            "deteccion_ataque": "Onset detection por RMS envelope follower",
+            "validacion_guitarra": "Template matching armónico por cuerda",
+            "cuerdas_soportadas": ["E2 (82 Hz)", "A2 (110 Hz)", "D3 (146 Hz)", "G3 (196 Hz)", "B3 (246 Hz)", "E4 (329 Hz)"],
+            "tolerancia_afinacion": "±5 cents",
+            "tipos_reduccion_ruido": [
+                "Spectral Gating (umbral espectral adaptativo)",
+                "Wiener Filter adaptativo (estimación MMSE)"
+            ]
+        })
+
+    except Exception as e:
+        return error_response(f"Error al obtener pipeline: {str(e)}")
+
+
+@router.post("/validate")
+async def validate_guitar_note(file: UploadFile = File(...)):
+    """
+    Valida si el audio corresponde a una nota de guitarra acústica.
+
+    Analiza coherencia armónica, proximidad a cuerdas de guitarra,
+    y calidad de señal. Ideal para filtrar ruido antes del afinador.
+
+    Para tesis: Este endpoint demuestra que el sistema puede distinguir
+    entre una cuerda de guitarra y otras fuentes de sonido usando
+    análisis de templates armónicos.
+    """
+    try:
+        signal, sample_rate = audio_from_upload(file)
+
+        result = pipeline_validator.validate_guitar_note(signal, sample_rate)
+
+        return success_response(result)
+
+    except Exception as e:
+        return error_response(f"Error al validar nota: {str(e)}")
+
+
+@router.post("/pipeline/compare")
+async def compare_pipeline_effect(file: UploadFile = File(...)):
+    """
+    Compara la señal antes y después del pipeline DSP completo.
+
+    Retorna métricas de calidad (SNR, confianza, frecuencia) para
+    la señal original y la procesada, demostrando cuantitativamente
+    la mejora del preprocesamiento.
+
+    Para tesis: Este endpoint es la herramienta principal para
+    demostrar experimentalmente la efectividad de cada etapa
+    del pipeline de filtrado.
+    """
+    try:
+        signal, sample_rate = audio_from_upload(file)
+
+        comparison = pipeline_validator.compare_pipeline_stages(signal)
+
+        return success_response(comparison)
+
+    except Exception as e:
+        return error_response(f"Error al comparar pipeline: {str(e)}")
+
+
+@router.post("/quality")
+async def analyze_audio_quality(file: UploadFile = File(...)):
+    """
+    Analiza la calidad de la señal de audio grabada.
+
+    Detecta: clipping, silencio, SNR, nivel de ruido.
+    Recomienda ajustes al usuario para mejorar la grabación.
+
+    Para tesis: Muestra que el sistema es consciente de la calidad
+    de la señal de entrada y puede diagnosticar problemas comunes.
+    """
+    try:
+        signal, _ = audio_from_upload(file)
+
+        quality = pipeline_validator.analyze_signal_quality(signal)
+
+        recomendaciones = []
+        if quality.get("has_clipping"):
+            recomendaciones.append("Aleja el micrófono o toca más suave (hay distorsión)")
+        if quality.get("is_too_quiet"):
+            recomendaciones.append("Acerca el micrófono a la guitarra o toca más fuerte")
+        if quality.get("snr_estimate_db", 0) < 10:
+            recomendaciones.append("Reduce el ruido ambiental o usa un micrófono direccional")
+
+        return success_response({
+            **quality,
+            "recomendaciones": recomendaciones
+        })
+
+    except Exception as e:
+        return error_response(f"Error al analizar calidad: {str(e)}")

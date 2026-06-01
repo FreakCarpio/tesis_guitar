@@ -124,12 +124,13 @@ class FFTAnalyzer:
         df = frequencies[1] - frequencies[0]
 
         return frequencies[peak_index] + p * df
-def harmonic_product_spectrum(self, magnitude):
 
-    hps = magnitude.copy()
+    def harmonic_product_spectrum(self, magnitude):
 
-    for factor in range(2, 5):
-        decimated = magnitude[::factor]
-        hps[:len(decimated)] *= decimated
+        hps = magnitude.copy()
 
-    return hps
+        for factor in range(2, 5):
+            decimated = magnitude[::factor]
+            hps[:len(decimated)] *= decimated
+
+        return hps
