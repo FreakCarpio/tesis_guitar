@@ -9,7 +9,6 @@ Integra:
 - Validación por template armónico de guitarra
 - Estabilización temporal (mediana móvil con pesos por confianza)
 
-Para tesis:
 Este motor encapsula toda la lógica DSP del afinador. Cada etapa
 está aislada, documentada y justificada académicamente. La fusión
 de múltiples algoritmos (sensor fusion) y la segmentación ataque-sustain
@@ -114,7 +113,7 @@ class PitchDetector:
     - Si AC sugiere octava diferente → verificar contra cuerdas
     - Confianza basada en: SNR del pico + cantidad de armónicos + coherencia
 
-    Para tesis: La fusión de múltiples estimadores es una aplicación de
+    La fusión de múltiples estimadores es una aplicación de
     sensor fusion que mejora la robustez. El FFT es rápido y preciso,
     la autocorrelación maneja bien las frecuencias graves de la guitarra,
     y el HPS verifica la coherencia armónica del resultado.
