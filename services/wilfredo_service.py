@@ -55,6 +55,7 @@ def analyze_tuner_feedback(frecuencia: float, nota: str, cents: float) -> str:
         return f"Estás {direccion}. Gira la clavija lento. 🎸"
     
     else:
+        direccion = "alta" if cents > 0 else "baja"
         return f"Vamos a afinar: {nota} está muy {direccion}. Gira la clavija hacia el tono correcto. 🔨"
 
 

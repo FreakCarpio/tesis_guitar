@@ -6,13 +6,16 @@ Autor: Tesis App
 Fecha: 2026
 """
 
-from fastapi import FastAPI, UploadFile, File
+from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 import shutil
 import os
+import math
+from datetime import date
 from domain.modelo import UserProfile
 from ia.modelo_adaptativo import modelo_adaptativo
 from analizador_señales.señal import SignalAnalyzer
+from audio.metricas_extractor import MetricsExtractor
 from routes.practicas import router as practicas_router
 from routes.wilfredo_routes import router as wilfredo_router
 from routes.tuner import router as tuner_router
@@ -55,142 +58,129 @@ app.include_router(tuner_router)
 
 model = modelo_adaptativo()
 analyzer = SignalAnalyzer()
+extractor = MetricsExtractor()
 
+# Perfiles adaptativos en memoria por usuario.
+# NOTA: estado en RAM; se pierde al reiniciar y no es seguro en multi-worker.
+# Para persistencia real habría que serializar UserProfile en MongoDB (ver reporte).
 profiles = {}
 
 
 @app.post("/practica")
 async def practice(user_id: str, file: UploadFile = File(...)):
-
-     # ----------------------------------------------------------------------
+    """
+    Registra una sesión de práctica completa:
+    1. Crea el usuario si no existe.
+    2. Analiza el audio (precisión, consistencia, error) de forma headless.
+    3. Persiste usuario, sesión, progreso y estadísticas en MongoDB.
+    4. Actualiza el perfil adaptativo del usuario.
+    """
+    # ----------------------------------------------------------------------
     # Verificación de usuario
     # Si el usuario no existe en la base de datos se crea automáticamente
     # con valores iniciales para su perfil de aprendizaje
     # ----------------------------------------------------------------------
     usuario = usuarios.find_one({"user_id": user_id})
-
     if usuario is None:
+        usuarios.insert_one({
+            "user_id": user_id,
+            "nivel": "principiante",
+            "precision": 0,
+            "sesiones": 0
+        })
 
-     nuevo_usuario = {
-        "user_id": user_id,
-        "nivel": "principiante",
-        "precision": 0,
-        "sesiones": 0
-    }
-
-    usuarios.insert_one(nuevo_usuario)
-     # ----------------------------------------------------------------------
+    # ----------------------------------------------------------------------
     # Almacenamiento temporal del archivo de audio recibido
     # El audio se guarda localmente para ser procesado por el analizador
     # ----------------------------------------------------------------------
-
     filepath = f"temp_{file.filename}"
-
     with open(filepath, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
 
- # ----------------------------------------------------------------------
-    # Análisis de audio
-    # Se obtienen métricas de precisión, consistencia y error
     # ----------------------------------------------------------------------
-    metrics = analyzer.analyze_file(filepath)
-
-    os.remove(filepath)
+    # Análisis de audio (headless, sin micrófono)
+    # Se carga con librosa y se evalúa con MetricsExtractor contra el
+    # semitono más cercano a la frecuencia detectada, obteniendo
+    # precisión (afinación), consistencia (estabilidad) y error (Hz).
+    # ----------------------------------------------------------------------
+    try:
+        y = analyzer.load_audio(filepath)
+        freq, _conf, _harm = extractor.detect_pitch(y, analyzer.sr)
+        if freq is None or freq <= 0:
+            raise HTTPException(status_code=422, detail="No se detectó señal de audio válida en la grabación.")
+        # Semitono (nota) más cercano como objetivo de referencia
+        target_freq = 440.0 * 2 ** (round(12 * math.log2(freq / 440.0)) / 12)
+        metrics = extractor.evaluate_sequence(y, analyzer.sr, target_freq)
+    finally:
+        if os.path.exists(filepath):
+            os.remove(filepath)
 
     precision = metrics["precision"]
-     # ----------------------------------------------------------------------
+    consistencia = metrics["consistencia"]
+    error = metrics["error"]
+
+    # ----------------------------------------------------------------------
     # Actualización de datos generales del usuario
     # Se registra la nueva precisión obtenida y se incrementa el número
     # total de sesiones realizadas
     # ----------------------------------------------------------------------
     usuarios.update_one(
-    {"user_id": user_id},
-    {
-        "$set": {
-            "precision": precision
-        },
-        "$inc": {
-            "sesiones": 1
+        {"user_id": user_id},
+        {
+            "$set": {"precision": precision},
+            "$inc": {"sesiones": 1}
         }
-    }
-)
-    consistencia = metrics["consistencia"]
-    error = metrics["error"]
-    
+    )
+
     # ----------------------------------------------------------------------
     # Registro de sesión de práctica
     # Guarda los resultados individuales obtenidos durante la ejecución
     # ----------------------------------------------------------------------
-    
     sesiones.insert_one({
+        "usuario": user_id,
+        "ejercicio": "practica_general",
+        "precision": precision,
+        "consistencia": consistencia,
+        "error": error
+    })
 
-    "usuario": user_id,
-    "ejercicio": "practica_general",
-    "precision": precision,
-    "consistencia": consistencia,
-    "error": error
-
-})
-    
     # ----------------------------------------------------------------------
     # Actualización de progreso del usuario
     # Se incrementa el contador de ejercicios completados y se registra
     # la fecha de la última práctica
     # ----------------------------------------------------------------------
     progreso.update_one(
-
-    {"usuario": user_id},
-
-    {
-        "$inc": {
-            "ejercicios_completados": 1
+        {"usuario": user_id},
+        {
+            "$inc": {"ejercicios_completados": 1},
+            "$set": {"ultima_practica": date.today().isoformat()}
         },
+        upsert=True
+    )
 
-        "$set": {
-            "ultima_practica": "2026-06-18"
-        }
-    },
-
-    upsert=True
-
-)
-        # ----------------------------------------------------------------------
+    # ----------------------------------------------------------------------
     # Actualización de estadísticas generales
     # Guarda información acumulada sobre el desempeño del usuario
     # ----------------------------------------------------------------------
-
     estadisticas.update_one(
-
-    {"usuario": user_id},
-
-    {
-        "$inc": {
-            "total_horas_practica": 1
+        {"usuario": user_id},
+        {
+            "$inc": {"total_horas_practica": 1},
+            "$set": {"precision_promedio": precision}
         },
+        upsert=True
+    )
 
-        "$set": {
-            "precision_promedio": precision
-        }
-    },
-
-    upsert=True
-
-)
-
-   # ----------------------------------------------------------------------
+    # ----------------------------------------------------------------------
     # IA Adaptativa
     # Actualiza el perfil del usuario con base en los resultados obtenidos
     # para personalizar futuras recomendaciones y ejercicios
     # ----------------------------------------------------------------------
-    profiles[user_id] = model.update(
-        profiles[user_id],
-        precision,
-        consistencia,
-        error
-    )
+    if user_id not in profiles:
+        profiles[user_id] = UserProfile()
+    profiles[user_id] = model.update(profiles[user_id], precision, consistencia, error)
 
     return {
         "metrics": metrics,
         "profile": profiles[user_id]
     }
-    
