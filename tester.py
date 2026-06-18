@@ -115,7 +115,7 @@ def main():
     
     # Análisis principal
     extractor = MetricsExtractor()
-    detected_freq = extractor.detect_pitch(signal, sample_rate)
+    detected_freq, detected_conf, detected_harmonics = extractor.detect_pitch(signal, sample_rate)
     
     print(f"\n RESULTADO PRINCIPAL:")
     print(f"   Frecuencia detectada: {detected_freq:.2f} Hz")

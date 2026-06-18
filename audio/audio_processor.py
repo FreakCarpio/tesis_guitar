@@ -5,6 +5,12 @@ from audio.metricas_extractor import MetricsExtractor
 from scipy.io.wavfile import write
 import datetime
 
+def save_sesiones(signal, sample_rate):
+    filename = f"sesiones/sesion_{datetime.datetime.now().timestamp()}.wav"
+    write(filename, sample_rate, signal.astype("int16"))
+    print(f"Sesión guardada en: {filename}")
+    return filename
+
 class AudioProcessor:
     """
     Procesador de audio completo con umbral adaptativo de silencio.
@@ -99,20 +105,16 @@ class AudioProcessor:
             # Verificar si hay señal
             if self.has_signal(signal_chunk):
                 silence_chunks = 0
-                
-                # Analizar este chunk
-                frames = self.fft.analyze_with_stft(signal_chunk, self.sample_rate)
-                all_frames.extend(frames)
-                
-                # Feedback en tiempo real (opcional)
-                if frames:
-                    last_freq = frames[-1]['frequency']
-                    note = self.extractor.frequency_to_note(last_freq)
-                    print(f"  Detectado: {last_freq:.1f} Hz ({note})", end='\r')
+
+                freq, conf, harmonics = self.fft.dominant_frequency(signal_chunk, self.sample_rate)
+                if freq > 0:
+                    all_frames.append({'frequency': freq, 'confidence': conf, 'harmonics': len(harmonics)})
+                    note = self.extractor.frequency_to_note(freq)
+                    print(f"  Detectado: {freq:.1f} Hz ({note})", end='\r')
             else:
                 silence_chunks += 1
                 print(f"  [Silencio {silence_chunks}/{max_silence_chunks}]", end='\r')
-                
+
                 if auto_stop and silence_chunks >= max_silence_chunks:
                     print("\nDeteniendo por silencio...")
                     break
@@ -140,7 +142,7 @@ class AudioProcessor:
                 "confianza": conf,
                 "nota": self.extractor.frequency_to_note(freq),
                 "armonicos": len(harmonics),
-                "es_guitarra": self.fft.is_guitar_sound(full_audio, self.sample_rate)[0]
+                "es_guitarra": self.extractor.validate_guitar_string(full_audio, self.sample_rate, freq)[0]
             }
     
     def analyze_file(self, file_path, target_freq=None):
@@ -185,12 +187,6 @@ def quick_test():
             print(f"{key}: {value}")
     
     return result
-
-def save_sesiones(signal, sample_rate):
-    filename = f"sesiones/sesion_{datetime.datetime.now().timestamp()}.wav"
-    write(filename, sample_rate, signal.astype("int16"))
-    print(f"Sesión guardada en: {filename}")
-    return filename
 
 if __name__ == "__main__":
     quick_test()

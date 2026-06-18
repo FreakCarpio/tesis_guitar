@@ -1,3 +1,5 @@
+import os
+import tempfile
 from fastapi import APIRouter, UploadFile, File
 from analizador_señales.señal import SignalAnalyzer
 
@@ -8,10 +10,10 @@ analyzer = SignalAnalyzer()
 @router.post("/practica/analyze")
 async def analyze_practice(audio: UploadFile = File(...)):
 
-    file_path = f"/tmp/{audio.filename}"
-
-    with open(file_path, "wb") as f:
-        f.write(await audio.read())
+    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(audio.filename or ".wav")[1])
+    file_path = tmp.name
+    tmp.write(await audio.read())
+    tmp.close()
 
     y = analyzer.load_audio(file_path)
 
@@ -23,5 +25,7 @@ async def analyze_practice(audio: UploadFile = File(...)):
         "brightness": float(analyzer.spectral_centroid(y)),
         "tempo": float(analyzer.tempo(y))
     }
+
+    os.unlink(file_path)
 
     return result
