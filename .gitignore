@@ -1,0 +1,16 @@
+# Entorno virtual
+.venv/
+
+# Cache de Python
+__pycache__/
+*.pyc
+
+# Archivos temporales
+temp_*.mp3
+temp_*.wav
+
+# Logs
+*.log
+
+# Variables de entorno
+.env
