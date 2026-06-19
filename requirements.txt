@@ -35,7 +35,6 @@ PyYAML==6.0.3
 requests==2.34.2
 scikit-learn==1.9.0
 scipy==1.17.1
-sounddevice==0.5.5
 soundfile==0.14.0
 soxr==1.1.0
 standard-aifc==3.13.0

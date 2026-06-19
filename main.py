@@ -10,6 +10,7 @@ from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 import shutil
 import os
+import tempfile
 import math
 from datetime import date
 from domain.modelo import UserProfile
@@ -91,11 +92,13 @@ async def practice(user_id: str, file: UploadFile = File(...)):
 
     # ----------------------------------------------------------------------
     # Almacenamiento temporal del archivo de audio recibido
-    # El audio se guarda localmente para ser procesado por el analizador
+    # Se usa tempfile para no depender de rutas fijas en el CWD; en un entorno
+    # Linux efímero (Railway) el archivo vive en el directorio temporal del SO.
     # ----------------------------------------------------------------------
-    filepath = f"temp_{file.filename}"
-    with open(filepath, "wb") as buffer:
+    suffix = os.path.splitext(file.filename or "")[1] or ".wav"
+    with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as buffer:
         shutil.copyfileobj(file.file, buffer)
+        filepath = buffer.name
 
     # ----------------------------------------------------------------------
     # Análisis de audio (headless, sin micrófono)

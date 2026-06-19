@@ -10,13 +10,14 @@ except ImportError:
     pass
 
 # URI de conexión a MongoDB Atlas.
-# Se lee de la variable de entorno MONGODB_URI; el valor por defecto mantiene
-# el entorno actual funcionando si no hay .env configurado.
-# IMPORTANTE: la credencial que estuvo commiteada debe rotarse en Atlas.
-MONGODB_URI = os.getenv(
-    "MONGODB_URI",
-    "mongodb+srv://crimsonblood069_db_user:w9K2c3XRUwzDwy1H@cluster0.iokiaz5.mongodb.net/?appName=Cluster0"
-)
+# Se lee EXCLUSIVAMENTE de la variable de entorno MONGODB_URI (Railway / .env).
+# Sin valor por defecto: nunca se commitea una credencial en el repositorio.
+MONGODB_URI = os.getenv("MONGODB_URI")
+if not MONGODB_URI:
+    raise RuntimeError(
+        "Falta la variable de entorno MONGODB_URI. "
+        "Configúrala en Railway (Variables) o en un archivo .env local."
+    )
 
 client = MongoClient(MONGODB_URI)
 db = client["Guitarra_app"]
