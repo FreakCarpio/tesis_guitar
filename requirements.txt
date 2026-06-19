@@ -48,3 +48,10 @@ urllib3==2.7.0
 uvicorn==0.49.0
 watchfiles==1.2.0
 websockets==16.0
+
+# Autenticación Google (verificación del idToken en /auth/google)
+google-auth==2.49.0
+cryptography==46.0.5
+pyasn1==0.6.2
+pyasn1-modules==0.4.2
+rsa==4.9.1

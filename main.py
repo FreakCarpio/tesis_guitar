@@ -20,6 +20,7 @@ from audio.metricas_extractor import MetricsExtractor
 from routes.practicas import router as practicas_router
 from routes.wilfredo_routes import router as wilfredo_router
 from routes.tuner import router as tuner_router
+from routes.auth import router as auth_router
 # --------------------------------------------------------------------------
 # Importación de colecciones MongoDB
 # Permiten almacenar información persistente de usuarios, sesiones,
@@ -56,6 +57,7 @@ app.add_middleware(
 app.include_router(practicas_router)
 app.include_router(wilfredo_router)
 app.include_router(tuner_router)
+app.include_router(auth_router)
 
 model = modelo_adaptativo()
 analyzer = SignalAnalyzer()
