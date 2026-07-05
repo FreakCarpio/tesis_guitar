@@ -25,6 +25,9 @@ from routes.progreso import router as progreso_router
 from routes.habilidades import router as habilidades_router
 from routes.camino import router as camino_router
 from routes.entrenador import router as entrenador_router
+from domain import ejercicios as ejercicios_dominio
+from domain import habilidades as habilidades_dominio
+from domain import camino as camino_dominio
 # --------------------------------------------------------------------------
 # Importación de colecciones MongoDB
 # Permiten almacenar información persistente de usuarios, sesiones,
@@ -154,7 +157,7 @@ async def practice(
     # Registro de sesión de práctica
     # Guarda los resultados individuales obtenidos durante la ejecución
     # ----------------------------------------------------------------------
-    sesiones.insert_one({
+    sesion_result = sesiones.insert_one({
         "usuario": user_id,
         "ejercicio": ejercicio,
         "precision": precision,
@@ -207,7 +210,74 @@ async def practice(
         profiles[user_id] = UserProfile()
     profiles[user_id] = model.update(profiles[user_id], precision, consistencia, error)
 
+    # ----------------------------------------------------------------------
+    # Sistema adaptativo P1 (aditivo y best-effort)
+    # Evalúa criterios de aprobación del ejercicio y actualiza las
+    # habilidades correspondientes. Si algo falla aquí, la sesión ya quedó
+    # persistida arriba: nunca se pierde una práctica por el motor.
+    # ----------------------------------------------------------------------
+    adaptativo = _actualizar_adaptativo(
+        user_id, ejercicio, precision, consistencia,
+        max(duracion_seg, 0), str(sesion_result.inserted_id)
+    )
+
     return {
         "metrics": metrics,
-        "profile": profiles[user_id]
+        "profile": profiles[user_id],
+        **adaptativo,
     }
+
+
+def _actualizar_adaptativo(user_id, ejercicio_id, precision, consistencia,
+                           duracion_seg, sesion_id) -> dict:
+    """Actualiza habilidades y camino tras la práctica (P1). Nunca lanza."""
+    vacio = {
+        "aprobado": None, "criterios": None,
+        "habilidades_actualizadas": [], "subio_nivel": False,
+        "paso_completado": None,
+    }
+    try:
+        ej = ejercicios_dominio.obtener_ejercicio(ejercicio_id)
+        crit = ej["criterios"]
+        aprobado = (
+            precision >= crit["precision_min"]
+            and consistencia >= crit["consistencia_min"]
+            and duracion_seg >= crit["duracion_min_seg"]
+        )
+
+        # Estado del camino ANTES, para detectar un paso recién completado.
+        camino_antes = camino_dominio.obtener_camino(user_id)
+        completados_antes = {
+            p["id"] for p in camino_antes["pasos"] if p["estado"] == "completado"
+        } if camino_antes else set()
+
+        actualizaciones = habilidades_dominio.aplicar_practica(
+            user_id,
+            habilidad_principal=ej["habilidad"],
+            habilidades_secundarias=ej.get("secundarias", []),
+            precision=precision,
+            consistencia=consistencia,
+            dificultad=ej["dificultad"],
+            aprobado=aprobado,
+            sesion_id=sesion_id,
+        )
+
+        camino_despues = camino_dominio.obtener_camino(user_id)
+        completados_despues = {
+            p["id"] for p in camino_despues["pasos"] if p["estado"] == "completado"
+        } if camino_despues else set()
+        nuevos = completados_despues - completados_antes
+        paso_completado = None
+        if nuevos:
+            paso = camino_dominio.paso_por_id(next(iter(nuevos)))
+            paso_completado = {"id": paso["id"], "nombre": paso["nombre"]} if paso else None
+
+        return {
+            "aprobado": aprobado,
+            "criterios": crit,
+            "habilidades_actualizadas": actualizaciones,
+            "subio_nivel": any(a["subio_nivel"] for a in actualizaciones),
+            "paso_completado": paso_completado,
+        }
+    except Exception:
+        return vacio
