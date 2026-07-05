@@ -23,6 +23,7 @@ from routes.tuner import router as tuner_router
 from routes.auth import router as auth_router
 from routes.progreso import router as progreso_router
 from routes.habilidades import router as habilidades_router
+from routes.camino import router as camino_router
 # --------------------------------------------------------------------------
 # Importación de colecciones MongoDB
 # Permiten almacenar información persistente de usuarios, sesiones,
@@ -62,6 +63,7 @@ app.include_router(tuner_router)
 app.include_router(auth_router)
 app.include_router(progreso_router)
 app.include_router(habilidades_router)
+app.include_router(camino_router)
 
 model = modelo_adaptativo()
 analyzer = SignalAnalyzer()
