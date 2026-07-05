@@ -12,7 +12,7 @@ import shutil
 import os
 import tempfile
 import math
-from datetime import date
+from datetime import date, datetime, timezone
 from domain.modelo import UserProfile
 from ia.modelo_adaptativo import modelo_adaptativo
 from analizador_señales.señal import SignalAnalyzer
@@ -21,6 +21,7 @@ from routes.practicas import router as practicas_router
 from routes.wilfredo_routes import router as wilfredo_router
 from routes.tuner import router as tuner_router
 from routes.auth import router as auth_router
+from routes.progreso import router as progreso_router
 # --------------------------------------------------------------------------
 # Importación de colecciones MongoDB
 # Permiten almacenar información persistente de usuarios, sesiones,
@@ -58,6 +59,7 @@ app.include_router(practicas_router)
 app.include_router(wilfredo_router)
 app.include_router(tuner_router)
 app.include_router(auth_router)
+app.include_router(progreso_router)
 
 model = modelo_adaptativo()
 analyzer = SignalAnalyzer()
@@ -70,7 +72,12 @@ profiles = {}
 
 
 @app.post("/practica")
-async def practice(user_id: str, file: UploadFile = File(...)):
+async def practice(
+    user_id: str,
+    file: UploadFile = File(...),
+    duracion_seg: int = 0,
+    ejercicio: str = "practica_general",
+):
     """
     Registra una sesión de práctica completa:
     1. Crea el usuario si no existe.
@@ -143,10 +150,12 @@ async def practice(user_id: str, file: UploadFile = File(...)):
     # ----------------------------------------------------------------------
     sesiones.insert_one({
         "usuario": user_id,
-        "ejercicio": "practica_general",
+        "ejercicio": ejercicio,
         "precision": precision,
         "consistencia": consistencia,
-        "error": error
+        "error": error,
+        "fecha": datetime.now(timezone.utc).isoformat(),
+        "duracion_seg": max(duracion_seg, 0)
     })
 
     # ----------------------------------------------------------------------
@@ -165,13 +174,20 @@ async def practice(user_id: str, file: UploadFile = File(...)):
 
     # ----------------------------------------------------------------------
     # Actualización de estadísticas generales
-    # Guarda información acumulada sobre el desempeño del usuario
+    # precision_promedio es el promedio REAL sobre todas las sesiones del
+    # usuario (agregación en Mongo), no la última precisión obtenida.
     # ----------------------------------------------------------------------
+    agg = list(sesiones.aggregate([
+        {"$match": {"usuario": user_id}},
+        {"$group": {"_id": None, "avg_precision": {"$avg": "$precision"}}}
+    ]))
+    precision_promedio = agg[0]["avg_precision"] if agg else precision
+
     estadisticas.update_one(
         {"usuario": user_id},
         {
-            "$inc": {"total_horas_practica": 1},
-            "$set": {"precision_promedio": precision}
+            "$inc": {"minutos_practica": round(max(duracion_seg, 0) / 60.0, 2)},
+            "$set": {"precision_promedio": precision_promedio}
         },
         upsert=True
     )
