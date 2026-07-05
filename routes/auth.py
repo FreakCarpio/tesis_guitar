@@ -176,6 +176,13 @@ async def save_onboarding(user_id: str, req: OnboardingRequest):
     result = usuarios.update_one({"user_id": user_id}, {"$set": updates})
     if result.matched_count == 0:
         raise HTTPException(status_code=404, detail="Usuario no encontrado.")
+
+    # P1: al declarar experiencia se siembra el sistema de habilidades
+    # (si ya existe, no se toca: el progreso ganado nunca se pisa).
+    if "experiencia" in updates:
+        from domain.habilidades import inicializar_habilidades
+        inicializar_habilidades(user_id, updates["experiencia"])
+
     return _perfil_publico(usuarios.find_one({"user_id": user_id}))
 
 

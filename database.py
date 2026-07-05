@@ -31,3 +31,9 @@ historial = db["historial"]
 configuraciones = db["configuraciones"]
 calibracion = db["calibracion"]
 ejercicios_desbloqueados = db["ejercicios_desbloqueados"]
+
+# Colecciones P1 - Sistema adaptativo
+habilidades = db["habilidades"]              # estado actual de las 12 habilidades por usuario
+habilidad_eventos = db["habilidad_eventos"]  # historial append-only de cambios de habilidad
+camino_usuario = db["camino_usuario"]        # posición del usuario en el camino de aprendizaje
+recomendaciones = db["recomendaciones"]      # log auditable de decisiones del motor adaptativo
