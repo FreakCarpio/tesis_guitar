@@ -25,6 +25,7 @@ from routes.progreso import router as progreso_router
 from routes.habilidades import router as habilidades_router
 from routes.camino import router as camino_router
 from routes.entrenador import router as entrenador_router
+from routes.canciones import router as canciones_router
 from domain import ejercicios as ejercicios_dominio
 from domain import habilidades as habilidades_dominio
 from domain import camino as camino_dominio
@@ -69,6 +70,7 @@ app.include_router(progreso_router)
 app.include_router(habilidades_router)
 app.include_router(camino_router)
 app.include_router(entrenador_router)
+app.include_router(canciones_router)
 
 model = modelo_adaptativo()
 analyzer = SignalAnalyzer()

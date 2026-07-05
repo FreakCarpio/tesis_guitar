@@ -37,3 +37,8 @@ habilidades = db["habilidades"]              # estado actual de las 12 habilidad
 habilidad_eventos = db["habilidad_eventos"]  # historial append-only de cambios de habilidad
 camino_usuario = db["camino_usuario"]        # posición del usuario en el camino de aprendizaje
 recomendaciones = db["recomendaciones"]      # log auditable de decisiones del motor adaptativo
+
+# Colecciones Song Detail - proxy de proveedores externos + biblioteca
+cancion_cache = db["cancion_cache"]          # detalle compuesto Songsterr+iTunes (TTL en lectura)
+busqueda_cache = db["busqueda_cache"]        # resultados de búsqueda Songsterr (TTL en lectura)
+biblioteca_usuario = db["biblioteca_usuario"]  # canciones guardadas/favoritas por usuario
