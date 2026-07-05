@@ -34,64 +34,41 @@ class FFTAnalyzer:
 
         frequencies, magnitude = self.compute_fft(signal, sample_rate)
 
-        # Rango típico guitarra
+        # Harmonic Product Spectrum sobre el espectro COMPLETO desde DC.
+        # HPS multiplica el espectro por copias decimadas (hps[i] = mag[i]·
+        # mag[2i]·mag[3i]·mag[4i]), por lo que el índice del bin DEBE ser
+        # proporcional a la frecuencia. Aplicarlo sobre un sub-rango que empieza
+        # en 70 Hz (no en 0) rompe esa proporcionalidad y hace que el detector
+        # se enganche a armónicos (devolvía 3·f0). Se calcula antes de recortar.
+        hps = self.harmonic_product_spectrum(magnitude)
+
+        # Rango típico guitarra (solo para elegir la fundamental).
         mask = (frequencies >= 70) & (frequencies <= 800)
         if not np.any(mask):
             return 0.0, 0.0, []
 
-        freqs = frequencies[mask]
-        mags = magnitude[mask]
-        mags = self.harmonic_product_spectrum(mags)
+        # La fundamental es el máximo del HPS dentro de la banda de guitarra:
+        # ése es justamente el propósito del Harmonic Product Spectrum.
+        hps_band = np.where(mask, hps, 0.0)
+        best_idx = int(np.argmax(hps_band))
 
-        # Tomar los 15 picos más fuertes
-        n_peaks = 15
-        peak_indices = np.argsort(mags)[-n_peaks:]
+        # Corrección de suboctava: el HPS a veces elige f0/2. Si en el ESPECTRO
+        # original (no HPS) hay mucha más energía en 2·f0 que en f0, entonces el
+        # pico elegido era un subarmónico y la fundamental real es 2·f0.
+        df = frequencies[1] - frequencies[0]
+        idx_doble = int(round(2 * best_idx))
+        if idx_doble < len(magnitude):
+            if magnitude[idx_doble] > 4.0 * magnitude[best_idx] and frequencies[idx_doble] <= 800:
+                best_idx = idx_doble
 
-        candidates = []
-        for idx in peak_indices:
-            candidates.append({
-                "freq": freqs[idx],
-                "mag": mags[idx],
-                "idx": idx
-            })
+        # Interpolación parabólica sub-bin sobre el HPS.
+        refined_freq = self._parabolic_interpolation(frequencies, hps, best_idx)
 
-        # Ordenar por frecuencia ascendente (clave)
-        candidates = sorted(candidates, key=lambda x: x["freq"])
-
-        best = None
-
-        # Buscar fundamental por coherencia armónica
-        for candidate in candidates:
-            f0 = candidate["freq"]
-
-            harmonic_hits = 0
-
-            for h in [2, 3]:
-                target = f0 * h
-                tolerance = 6  # Hz
-
-                for other in candidates:
-                    if abs(other["freq"] - target) < tolerance:
-                        harmonic_hits += 1
-                        break
-
-            # Si tiene al menos un armónico coherente → aceptar
-            if harmonic_hits >= 1:
-                best = candidate
-                break
-
-        # Fallback: usar el más bajo
-        if best is None:
-            best = candidates[0]
-
-        # Interpolación parabólica
-        refined_freq = self._parabolic_interpolation(
-            freqs,
-            mags,
-            best["idx"]
-        )
-
-        confidence = min(1.0, best["mag"] / np.max(mags))
+        # Confianza = prominencia del pico de HPS respecto a la media de la
+        # banda (0 = espectro plano/ruido; →1 = pico tonal marcado).
+        band_vals = hps[mask]
+        media = float(np.mean(band_vals)) + 1e-12
+        confidence = float(min(1.0, max(0.0, 1.0 - media / (hps[best_idx] + 1e-12))))
 
         harmonics = []
         for h in [2, 3, 4]:
