@@ -22,7 +22,7 @@ from pydantic import BaseModel
 from google.oauth2 import id_token as google_id_token
 from google.auth.transport import requests as google_requests
 
-from database import usuarios, sesiones, estadisticas
+from database import usuarios, sesiones
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -43,13 +43,42 @@ class PerfilUpdate(BaseModel):
     foto: Optional[str] = None
 
 
+class OnboardingRequest(BaseModel):
+    """Respuestas del onboarding inicial y/o marca de finalización.
+
+    - experiencia: nunca | principiante | intermedio | avanzado
+    - objetivo: aprender_desde_cero | mejorar_tecnica | aprender_canciones | practicar_diario
+    - completado: True cuando el usuario terminó todo el flujo (afinador + 1ª práctica)
+    """
+    experiencia: Optional[str] = None
+    objetivo: Optional[str] = None
+    completado: Optional[bool] = None
+
+
+# La experiencia declarada define el nivel inicial que usa Wilfredo.
+NIVEL_POR_EXPERIENCIA = {
+    "nunca": "principiante",
+    "principiante": "principiante",
+    "intermedio": "intermedio",
+    "avanzado": "avanzado",
+}
+
+
 def _estadisticas(user_id: str) -> dict:
-    """Estadísticas reales agregadas desde las colecciones existentes."""
-    total_sesiones = sesiones.count_documents({"usuario": user_id})
-    est = estadisticas.find_one({"usuario": user_id}) or {}
+    """Estadísticas reales agregadas directamente desde las sesiones en Mongo."""
+    agg = list(sesiones.aggregate([
+        {"$match": {"usuario": user_id}},
+        {"$group": {
+            "_id": None,
+            "sesiones": {"$sum": 1},
+            "precision_promedio": {"$avg": "$precision"},
+        }}
+    ]))
+    if not agg:
+        return {"sesiones": 0, "precision_promedio": 0.0}
     return {
-        "sesiones": total_sesiones,
-        "precision_promedio": round(float(est.get("precision_promedio", 0) or 0), 4),
+        "sesiones": int(agg[0]["sesiones"]),
+        "precision_promedio": round(float(agg[0]["precision_promedio"] or 0), 4),
     }
 
 
@@ -61,6 +90,9 @@ def _perfil_publico(doc: dict) -> dict:
         "email": doc.get("email"),
         "foto": doc.get("foto"),
         "nivel": doc.get("nivel", "principiante"),
+        "experiencia": doc.get("experiencia"),
+        "objetivo": doc.get("objetivo"),
+        "onboarding_completado": bool(doc.get("onboarding_completado", False)),
         "fecha_registro": doc.get("fecha_registro"),
         "ultima_sesion": doc.get("ultima_sesion"),
         "estadisticas": _estadisticas(doc["user_id"]),
@@ -94,6 +126,7 @@ async def login_google(req: GoogleLoginRequest):
             "nivel": "principiante",
             "precision": 0,
             "sesiones": 0,
+            "onboarding_completado": False,
             "fecha_registro": now,
             "ultima_sesion": now,
         }
@@ -121,6 +154,29 @@ async def get_perfil(user_id: str):
     if usuario is None:
         raise HTTPException(status_code=404, detail="Usuario no encontrado.")
     return _perfil_publico(usuario)
+
+
+@router.post("/onboarding/{user_id}")
+async def save_onboarding(user_id: str, req: OnboardingRequest):
+    """Guarda las respuestas del onboarding y/o lo marca como completado."""
+    updates = {}
+    if req.experiencia is not None:
+        experiencia = req.experiencia.lower().strip()
+        if experiencia not in NIVEL_POR_EXPERIENCIA:
+            raise HTTPException(status_code=422, detail="Experiencia inválida.")
+        updates["experiencia"] = experiencia
+        updates["nivel"] = NIVEL_POR_EXPERIENCIA[experiencia]
+    if req.objetivo is not None:
+        updates["objetivo"] = req.objetivo.lower().strip()
+    if req.completado is not None:
+        updates["onboarding_completado"] = req.completado
+    if not updates:
+        raise HTTPException(status_code=400, detail="No se enviaron datos de onboarding.")
+
+    result = usuarios.update_one({"user_id": user_id}, {"$set": updates})
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado.")
+    return _perfil_publico(usuarios.find_one({"user_id": user_id}))
 
 
 @router.put("/perfil/{user_id}")
