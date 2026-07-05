@@ -18,8 +18,42 @@ calentamiento). Los nuevos se practican en modo libre hasta que Android
 tenga contenido guiado propio.
 """
 
+# --------------------------------------------------------------------------
+# Criterios de aprobación CALIBRADOS contra el pipeline de audio real
+# (ver tools/calibracion_audio.py). Medición sobre las 6 cuerdas:
+#
+#   precisión = 1 - |desafinación_cents| / 50   (solo válida en notas sostenidas)
+#     · nota afinada (0-10 cents):  precisión 0.75 - 0.97
+#     · 20 cents de error:          precisión ~0.56
+#     · 30 cents:                   precisión ~0.35
+#   consistencia = estabilidad de la frecuencia entre segmentos
+#     · nota sostenida afinada:     consistencia ~1.0
+#     · pasaje multinota (escala):  consistencia ~0.0  (la frecuencia cambia
+#       entre notas por diseño; la métrica NO puntúa musicalidad)
+#
+# Por eso los umbrales dependen del TIPO de ejercicio:
+#  - SOSTENIDO (afinación): precisión y consistencia son plenamente válidas.
+#  - MULTINOTA (resto): la consistencia no aplica (se pone en 0) y la precisión
+#    de un pasaje bien tocado ronda 0.45; el umbral se fija por debajo. La
+#    duración es el criterio principal de "sí practicaste".
+#
+# LIMITACIÓN CONOCIDA: el analizador no puntúa la corrección de una secuencia
+# de notas (qué notas y en qué orden). Puntuar musicalidad requeriría un
+# alineamiento nota a nota (DTW) contra la secuencia esperada: fuera de P1.
+# --------------------------------------------------------------------------
+
+# Perfil para ejercicios de nota sostenida (afinación).
+def _crit_sostenido(precision_min, consistencia_min, dur):
+    return {"precision_min": precision_min, "consistencia_min": consistencia_min,
+            "duracion_min_seg": dur}
+
+# Perfil para ejercicios multinota: la consistencia no aplica (0.0).
+def _crit_multinota(precision_min, dur):
+    return {"precision_min": precision_min, "consistencia_min": 0.0,
+            "duracion_min_seg": dur}
+
 # Criterios por defecto para ejercicios desconocidos o práctica libre.
-CRITERIOS_DEFAULT = {"precision_min": 0.5, "consistencia_min": 0.4, "duracion_min_seg": 60}
+CRITERIOS_DEFAULT = _crit_multinota(0.3, 60)
 
 EJERCICIOS = [
     {
@@ -33,7 +67,7 @@ EJERCICIOS = [
         "dificultad": 1,
         "duracion_min": 5,
         "objetivo": "Tocar cuerdas al aire afinadas y estables",
-        "criterios": {"precision_min": 0.7, "consistencia_min": 0.6, "duracion_min_seg": 60},
+        "criterios": _crit_sostenido(0.65, 0.85, 60),
     },
     {
         "id": "acordes",
@@ -46,7 +80,7 @@ EJERCICIOS = [
         "dificultad": 2,
         "duracion_min": 10,
         "objetivo": "Lograr que los acordes abiertos suenen limpios y sin trasteo",
-        "criterios": {"precision_min": 0.55, "consistencia_min": 0.45, "duracion_min_seg": 120},
+        "criterios": _crit_multinota(0.35, 120),
     },
     {
         "id": "cambios_acordes",
@@ -59,7 +93,7 @@ EJERCICIOS = [
         "dificultad": 2,
         "duracion_min": 10,
         "objetivo": "Cambiar entre Am, C y G sin pausas largas",
-        "criterios": {"precision_min": 0.55, "consistencia_min": 0.5, "duracion_min_seg": 120},
+        "criterios": _crit_multinota(0.35, 120),
     },
     {
         "id": "ritmo",
@@ -72,7 +106,7 @@ EJERCICIOS = [
         "dificultad": 2,
         "duracion_min": 10,
         "objetivo": "Mantener un pulso constante en 4/4",
-        "criterios": {"precision_min": 0.5, "consistencia_min": 0.6, "duracion_min_seg": 120},
+        "criterios": _crit_multinota(0.30, 120),
     },
     {
         "id": "rasgueo",
@@ -85,7 +119,7 @@ EJERCICIOS = [
         "dificultad": 2,
         "duracion_min": 10,
         "objetivo": "Dominar el patrón D-DU-UDU con muñeca relajada",
-        "criterios": {"precision_min": 0.5, "consistencia_min": 0.55, "duracion_min_seg": 120},
+        "criterios": _crit_multinota(0.30, 120),
     },
     {
         "id": "primera_cancion",
@@ -98,7 +132,7 @@ EJERCICIOS = [
         "dificultad": 3,
         "duracion_min": 15,
         "objetivo": "Tocar una progresión Am-C-G completa sin detenerte",
-        "criterios": {"precision_min": 0.6, "consistencia_min": 0.55, "duracion_min_seg": 180},
+        "criterios": _crit_multinota(0.38, 180),
     },
     {
         "id": "fingerpicking",
@@ -111,7 +145,7 @@ EJERCICIOS = [
         "dificultad": 3,
         "duracion_min": 10,
         "objetivo": "Ejecutar el patrón p-i-m-a de forma fluida",
-        "criterios": {"precision_min": 0.6, "consistencia_min": 0.5, "duracion_min_seg": 120},
+        "criterios": _crit_multinota(0.38, 120),
     },
     {
         "id": "arpegios",
@@ -124,7 +158,7 @@ EJERCICIOS = [
         "dificultad": 3,
         "duracion_min": 10,
         "objetivo": "Arpegiar acordes abiertos con notas limpias y parejas",
-        "criterios": {"precision_min": 0.6, "consistencia_min": 0.55, "duracion_min_seg": 120},
+        "criterios": _crit_multinota(0.38, 120),
     },
     {
         "id": "cejilla",
@@ -137,7 +171,7 @@ EJERCICIOS = [
         "dificultad": 4,
         "duracion_min": 10,
         "objetivo": "Lograr que el acorde F suene completo sin cuerdas muertas",
-        "criterios": {"precision_min": 0.55, "consistencia_min": 0.5, "duracion_min_seg": 120},
+        "criterios": _crit_multinota(0.35, 120),
     },
     {
         "id": "escalas",
@@ -150,7 +184,7 @@ EJERCICIOS = [
         "dificultad": 3,
         "duracion_min": 10,
         "objetivo": "Subir y bajar la escala sin errores de digitación",
-        "criterios": {"precision_min": 0.65, "consistencia_min": 0.55, "duracion_min_seg": 120},
+        "criterios": _crit_multinota(0.38, 120),
     },
     {
         "id": "lectura",
@@ -163,7 +197,7 @@ EJERCICIOS = [
         "dificultad": 3,
         "duracion_min": 10,
         "objetivo": "Tocar un fragmento nuevo leyéndolo a primera vista",
-        "criterios": {"precision_min": 0.5, "consistencia_min": 0.45, "duracion_min_seg": 120},
+        "criterios": _crit_multinota(0.32, 120),
     },
     {
         "id": "velocidad",
@@ -176,7 +210,7 @@ EJERCICIOS = [
         "dificultad": 4,
         "duracion_min": 10,
         "objetivo": "Aumentar el tempo manteniendo notas limpias",
-        "criterios": {"precision_min": 0.6, "consistencia_min": 0.6, "duracion_min_seg": 120},
+        "criterios": _crit_multinota(0.38, 120),
     },
     {
         "id": "calentamiento",
@@ -189,7 +223,7 @@ EJERCICIOS = [
         "dificultad": 1,
         "duracion_min": 5,
         "objetivo": "Activar dedos y muñecas antes de practicar",
-        "criterios": {"precision_min": 0.4, "consistencia_min": 0.35, "duracion_min_seg": 60},
+        "criterios": _crit_multinota(0.28, 60),
     },
     {
         "id": "practica_general",
