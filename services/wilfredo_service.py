@@ -146,6 +146,43 @@ def generate_chat_response(mensaje: str, nivel: str = "principiante") -> str:
     return responses[random.randint(0, 2)]
 
 
+def generate_song_plan(titulo: str, artista: str, dificultad: Optional[str] = None,
+                       tiene_acordes: bool = True, nivel: str = "principiante") -> dict:
+    """Objetivos de práctica para una canción concreta (determinístico).
+
+    Se usa cuando el usuario pulsa "Practicar" en el detalle de una canción:
+    Wilfredo genera objetivos según la dificultad de la tablatura, si tiene
+    acordes y el nivel del usuario.
+    """
+    objetivos = [f"Escucha «{titulo}» completa y ubica las partes difíciles"]
+
+    if tiene_acordes:
+        objetivos.append("Repasa la progresión de acordes en bucle, lenta y limpia")
+    else:
+        objetivos.append("Practica el riff principal en bucle, lento y limpio")
+
+    if dificultad == "Avanzado":
+        objetivos.append("Divide la canción en secciones cortas y domina una por sesión")
+    elif dificultad == "Intermedio":
+        objetivos.append("Sube el tempo solo cuando toques 3 veces seguidas sin errores")
+    else:
+        objetivos.append("Mantén un pulso constante aunque sea muy lento")
+
+    objetivos.append("Toca de inicio a fin sin detenerte, aunque haya errores")
+
+    consejos = {
+        "principiante": f"No busques velocidad en «{titulo}»: busca que cada acorde suene completo. 🐢",
+        "intermedio": f"Usa metrónomo con «{titulo}» y sube 5 BPM por sesión limpia. 🎯",
+        "avanzado": f"Trabaja la dinámica de «{titulo}»: que se distingan versos de coros. 🎸",
+    }
+
+    return {
+        "objetivos": objetivos,
+        "consejo": consejos.get(nivel, consejos["principiante"]),
+        "duracion_sugerida_min": 20 if dificultad == "Avanzado" else 15,
+    }
+
+
 def generate_practice_plan(nivel: str, goal: Optional[str] = None) -> dict:
     """genero plan de práctica segun nivel"""
     plans = {

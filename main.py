@@ -26,6 +26,7 @@ from routes.habilidades import router as habilidades_router
 from routes.camino import router as camino_router
 from routes.entrenador import router as entrenador_router
 from routes.canciones import router as canciones_router
+from routes.biblioteca import router as biblioteca_router
 from domain import ejercicios as ejercicios_dominio
 from domain import habilidades as habilidades_dominio
 from domain import camino as camino_dominio
@@ -71,6 +72,7 @@ app.include_router(habilidades_router)
 app.include_router(camino_router)
 app.include_router(entrenador_router)
 app.include_router(canciones_router)
+app.include_router(biblioteca_router)
 
 model = modelo_adaptativo()
 analyzer = SignalAnalyzer()
@@ -88,6 +90,7 @@ async def practice(
     file: UploadFile = File(...),
     duracion_seg: int = 0,
     ejercicio: str = "practica_general",
+    cancion_id: int | None = None,
 ):
     """
     Registra una sesión de práctica completa:
@@ -159,7 +162,7 @@ async def practice(
     # Registro de sesión de práctica
     # Guarda los resultados individuales obtenidos durante la ejecución
     # ----------------------------------------------------------------------
-    sesion_result = sesiones.insert_one({
+    doc_sesion = {
         "usuario": user_id,
         "ejercicio": ejercicio,
         "precision": precision,
@@ -167,7 +170,11 @@ async def practice(
         "error": error,
         "fecha": datetime.now(timezone.utc).isoformat(),
         "duracion_seg": max(duracion_seg, 0)
-    })
+    }
+    # Sesión asociada a una canción (flujo Practicar desde Song Detail).
+    if cancion_id is not None:
+        doc_sesion["cancion_id"] = cancion_id
+    sesion_result = sesiones.insert_one(doc_sesion)
 
     # ----------------------------------------------------------------------
     # Actualización de progreso del usuario
