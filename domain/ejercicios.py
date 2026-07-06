@@ -240,6 +240,149 @@ EJERCICIOS = [
     },
 ]
 
+# ==========================================================================
+# PASOS DE PRÁCTICA GUIADA EN VIVO (estilo Yousician)
+#
+# Tipos de paso soportados (identificadores estables para el cliente y la
+# futura IA adaptativa; el usuario los definió explícitamente en inglés):
+#   - Validables por pitch monofónico (YIN): NOTE, SEQUENCE, STRING, SCALE,
+#     ARPEGGIO, MELODY  -> `objetivos` = notas con octava en orden.
+#   - Validables por actividad/ataques (YIN no detecta polifonía): CHORD,
+#     CHORD_CHANGE, RHYTHM, SONG_FRAGMENT, CUSTOM -> `objetivos` = etiquetas
+#     (acordes/patrón) y la validación en vivo es por energía y pulsos.
+#
+# Cada paso lleva difficulty (1-5), xp y skill: hoy con valores por defecto
+# razonables, mañana insumo directo del motor adaptativo (sin rediseño).
+# ==========================================================================
+
+TIPOS_PASO = {
+    "NOTE", "SEQUENCE", "RHYTHM", "CHORD", "CHORD_CHANGE", "STRING",
+    "SCALE", "ARPEGGIO", "MELODY", "SONG_FRAGMENT", "CUSTOM",
+}
+
+# Tipos cuya validación en vivo es por detección de tono (monofónico).
+TIPOS_POR_PITCH = {"NOTE", "SEQUENCE", "STRING", "SCALE", "ARPEGGIO", "MELODY"}
+
+
+def _paso(titulo, instruccion, tipo, objetivos, duracion_seg=30,
+          bpm=None, difficulty=None, xp=None, skill=None):
+    """Builder de paso con defaults: difficulty/xp/skill se completan al
+    fusionar con su ejercicio (difficulty=la del ejercicio, xp=10·difficulty,
+    skill=habilidad principal del ejercicio)."""
+    assert tipo in TIPOS_PASO, f"tipo de paso inválido: {tipo}"
+    return {
+        "titulo": titulo,
+        "instruccion": instruccion,
+        "tipo": tipo,
+        "objetivos": objetivos,
+        "duracion_seg": duracion_seg,
+        "bpm": bpm,
+        "difficulty": difficulty,
+        "xp": xp,
+        "skill": skill,
+    }
+
+
+PASOS_POR_EJERCICIO = {
+    "afinacion": [
+        _paso("Cuerda 6 (Mi grave)", "Toca la 6ª cuerda al aire y mantenla sonando", "STRING", ["E2"], 15),
+        _paso("Cuerda 5 (La)", "Toca la 5ª cuerda al aire", "STRING", ["A2"], 15),
+        _paso("Cuerda 4 (Re)", "Toca la 4ª cuerda al aire", "STRING", ["D3"], 15),
+        _paso("Cuerda 3 (Sol)", "Toca la 3ª cuerda al aire", "STRING", ["G3"], 15),
+        _paso("Cuerda 2 (Si)", "Toca la 2ª cuerda al aire", "STRING", ["B3"], 15),
+        _paso("Cuerda 1 (Mi agudo)", "Toca la 1ª cuerda al aire", "STRING", ["E4"], 15),
+    ],
+    "escalas": [
+        _paso("Do Mayor: subida", "Toca la escala nota por nota, lenta y limpia",
+              "SCALE", ["C3", "D3", "E3", "F3", "G3", "A3", "B3", "C4"], 45, bpm=60),
+        _paso("Do Mayor: bajada", "Ahora en sentido inverso, mismo tempo",
+              "SCALE", ["C4", "B3", "A3", "G3", "F3", "E3", "D3", "C3"], 45, bpm=60),
+        _paso("Pentatónica de La menor", "Posición 1: cada nota debe sonar clara",
+              "SCALE", ["A2", "C3", "D3", "E3", "G3", "A3"], 45, bpm=70, difficulty=3),
+    ],
+    "acordes": [
+        _paso("Acorde Am", "Forma Am y rasguea 4 veces, que suene completo", "CHORD", ["Am"], 25),
+        _paso("Acorde C", "Cambia a Do Mayor y rasguea 4 veces", "CHORD", ["C"], 25),
+        _paso("Acorde G", "Ahora Sol Mayor, cuida la 6ª cuerda", "CHORD", ["G"], 25),
+        _paso("Cambio Am → C", "Alterna entre Am y C cada 4 tiempos",
+              "CHORD_CHANGE", ["Am", "C"], 40, bpm=60, skill="cambios_acordes"),
+    ],
+    "cambios_acordes": [
+        _paso("Am → C lento", "Cambia entre Am y C sin pausas, aunque sea lento",
+              "CHORD_CHANGE", ["Am", "C"], 40, bpm=50),
+        _paso("C → G", "El cambio más difícil del inicio: anticipa los dedos",
+              "CHORD_CHANGE", ["C", "G"], 40, bpm=50),
+        _paso("Am → C → G", "La progresión completa, un compás por acorde",
+              "CHORD_CHANGE", ["Am", "C", "G"], 60, bpm=60, difficulty=3),
+    ],
+    "ritmo": [
+        _paso("Pulso en negras", "Rasguea hacia abajo en cada pulso: 1-2-3-4",
+              "RHYTHM", ["↓", "↓", "↓", "↓"], 30, bpm=60),
+        _paso("Corcheas", "Abajo-arriba constante: 1-y-2-y-3-y-4-y",
+              "RHYTHM", ["↓", "↑"], 30, bpm=70, difficulty=3),
+    ],
+    "rasgueo": [
+        _paso("Rasgueo abajo", "Muñeca relajada, rasgueos hacia abajo parejos",
+              "RHYTHM", ["↓", "↓", "↓", "↓"], 30, bpm=60),
+        _paso("Patrón D-DU-UDU", "El patrón universal: ↓ ↓↑ ↑↓↑",
+              "RHYTHM", ["↓", "↓", "↑", "↑", "↓", "↑"], 45, bpm=70, difficulty=3),
+    ],
+    "arpegios": [
+        _paso("Arpegio de Am", "Toca las notas del acorde una por una",
+              "ARPEGGIO", ["A2", "E3", "A3", "C4"], 40, bpm=60),
+        _paso("Arpegio de C", "Ahora Do Mayor, notas limpias y parejas",
+              "ARPEGGIO", ["C3", "E3", "G3", "C4"], 40, bpm=60),
+    ],
+    "fingerpicking": [
+        _paso("p-i-m-a sobre Em", "Pulgar en 6ª, luego índice, medio y anular",
+              "ARPEGGIO", ["E2", "G3", "B3", "E4"], 45, bpm=55),
+        _paso("Pulgar alternado", "Alterna el pulgar entre 6ª y 4ª cuerda",
+              "SEQUENCE", ["E2", "D3", "E2", "D3"], 40, bpm=60, difficulty=4),
+    ],
+    "cejilla": [
+        _paso("Acorde F", "Forma la cejilla en el traste 1: que suenen las 6 cuerdas",
+              "CHORD", ["F"], 40),
+        _paso("Cambio C → F", "Del acorde abierto a la cejilla sin detenerte",
+              "CHORD_CHANGE", ["C", "F"], 45, bpm=50, difficulty=5, skill="cambios_acordes"),
+    ],
+    "velocidad": [
+        _paso("Cromática a 80", "Dedos 1-2-3-4 en trastes consecutivos",
+              "SEQUENCE", ["E2", "F2", "F#2", "G2"], 40, bpm=80),
+        _paso("Cromática a 100", "Mismo ejercicio, más rápido y sin errores",
+              "SEQUENCE", ["E2", "F2", "F#2", "G2"], 40, bpm=100, difficulty=5),
+    ],
+    "calentamiento": [
+        _paso("Cuerdas al aire", "Toca cada cuerda al aire, limpia y sin trastear",
+              "SEQUENCE", ["E2", "A2", "D3", "G3", "B3", "E4"], 30),
+        _paso("Araña 1-2-3-4", "Un dedo por traste, despacio",
+              "SEQUENCE", ["F2", "F#2", "G2", "G#2"], 30, bpm=60),
+    ],
+    "lectura": [
+        _paso("Lectura a primera vista", "Abre la tablatura y toca leyéndola sin memorizar",
+              "CUSTOM", ["lectura"], 90),
+    ],
+    "primera_cancion": [
+        _paso("Progresión de la canción", "Toca Am → C → G, un compás por acorde",
+              "CHORD_CHANGE", ["Am", "C", "G"], 60, bpm=60),
+        _paso("La canción completa", "De inicio a fin sin detenerte, aunque haya errores",
+              "SONG_FRAGMENT", ["Am", "C", "G"], 120, bpm=60, difficulty=3),
+    ],
+    # practica_general: sin pasos (práctica libre pura).
+}
+
+# Fusiona pasos en el catálogo completando defaults por ejercicio.
+for _e in EJERCICIOS:
+    _pasos = PASOS_POR_EJERCICIO.get(_e["id"], [])
+    for _i, _p in enumerate(_pasos):
+        _p["id"] = f"{_e['id']}_p{_i + 1}"
+        if _p["difficulty"] is None:
+            _p["difficulty"] = _e["dificultad"]
+        if _p["xp"] is None:
+            _p["xp"] = 10 * _p["difficulty"]
+        if _p["skill"] is None:
+            _p["skill"] = _e["habilidad"]
+    _e["pasos"] = _pasos
+
 _POR_ID = {e["id"]: e for e in EJERCICIOS}
 _DEFAULT = _POR_ID["practica_general"]
 

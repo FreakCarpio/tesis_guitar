@@ -14,9 +14,26 @@ from datetime import date, datetime, timedelta, timezone
 
 from fastapi import APIRouter, HTTPException
 
-from database import progreso, sesiones, usuarios
+from database import intentos_ejercicio, progreso, sesiones, usuarios
 
 router = APIRouter(prefix="/progreso", tags=["progreso"])
+
+
+@router.get("/{user_id}/intentos")
+async def get_intentos(user_id: str, limite: int = 20):
+    """Historial de intentos de ejercicio (ExerciseAttempt), más recientes primero.
+
+    Base del motor adaptativo y de la memoria pedagógica de Wilfredo.
+    """
+    if usuarios.find_one({"user_id": user_id}) is None:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado.")
+    limite = max(1, min(100, limite))
+    docs = list(
+        intentos_ejercicio.find({"usuario": user_id}, {"_id": 0})
+        .sort("fecha", -1)
+        .limit(limite)
+    )
+    return {"usuario": user_id, "intentos": docs, "total": len(docs)}
 
 
 def _parse_fecha(valor) -> date | None:

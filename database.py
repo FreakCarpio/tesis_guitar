@@ -38,6 +38,11 @@ habilidad_eventos = db["habilidad_eventos"]  # historial append-only de cambios 
 camino_usuario = db["camino_usuario"]        # posición del usuario en el camino de aprendizaje
 recomendaciones = db["recomendaciones"]      # log auditable de decisiones del motor adaptativo
 
+# Práctica guiada - registro completo de cada intento de ejercicio
+# (ExerciseAttempt: tiempos, pasos ejecutados, puntuación, estrellas,
+# precisión/consistencia). Base del futuro motor adaptativo.
+intentos_ejercicio = db["intentos_ejercicio"]
+
 # Colecciones Song Detail - proxy de proveedores externos + biblioteca
 cancion_cache = db["cancion_cache"]          # detalle compuesto Songsterr+iTunes (TTL en lectura)
 busqueda_cache = db["busqueda_cache"]        # resultados de búsqueda Songsterr (TTL en lectura)

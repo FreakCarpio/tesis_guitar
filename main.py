@@ -6,7 +6,8 @@ Autor: Tesis App
 Fecha: 2026
 """
 
-from fastapi import FastAPI, UploadFile, File, HTTPException
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException
+import json as json_lib
 from fastapi.middleware.cors import CORSMiddleware
 import shutil
 import os
@@ -39,7 +40,8 @@ from database import (
     usuarios,
     sesiones,
     progreso,
-    estadisticas
+    estadisticas,
+    intentos_ejercicio
 )
 
 app = FastAPI(
@@ -91,6 +93,13 @@ async def practice(
     duracion_seg: int = 0,
     ejercicio: str = "practica_general",
     cancion_id: int | None = None,
+    # --- Práctica guiada en vivo (opcionales, calculados por el cliente) ---
+    puntuacion: float | None = None,      # 0-100
+    estrellas: int | None = None,         # 0-3
+    notas_acertadas: int | None = None,
+    notas_totales: int | None = None,
+    inicio: str | None = None,            # ISO del arranque de la sesión en vivo
+    detalle_pasos: str | None = Form(None),  # JSON: resultado por paso
 ):
     """
     Registra una sesión de práctica completa:
@@ -235,11 +244,97 @@ async def practice(
         max(duracion_seg, 0), str(sesion_result.inserted_id)
     )
 
+    # ----------------------------------------------------------------------
+    # ExerciseAttempt: registro completo del intento (base del motor
+    # adaptativo futuro). Se crea SIEMPRE (también en práctica libre);
+    # los campos en vivo quedan en None si el cliente no los envió.
+    # ----------------------------------------------------------------------
+    intento = _registrar_intento(
+        user_id=user_id,
+        ejercicio=ejercicio,
+        cancion_id=cancion_id,
+        sesion_id=str(sesion_result.inserted_id),
+        duracion_seg=max(duracion_seg, 0),
+        precision=precision,
+        consistencia=consistencia,
+        aprobado=adaptativo.get("aprobado"),
+        puntuacion=puntuacion,
+        estrellas=estrellas,
+        notas_acertadas=notas_acertadas,
+        notas_totales=notas_totales,
+        inicio=inicio,
+        detalle_pasos_raw=detalle_pasos,
+    )
+
     return {
         "metrics": metrics,
         "profile": profiles[user_id],
         **adaptativo,
+        "intento": intento,
     }
+
+
+def _registrar_intento(user_id, ejercicio, cancion_id, sesion_id, duracion_seg,
+                       precision, consistencia, aprobado, puntuacion, estrellas,
+                       notas_acertadas, notas_totales, inicio, detalle_pasos_raw) -> dict | None:
+    """Persiste el ExerciseAttempt en `intentos_ejercicio`. Nunca lanza."""
+    try:
+        fin = datetime.now(timezone.utc)
+        # Inicio: el reportado por el cliente o derivado de la duración.
+        try:
+            inicio_dt = datetime.fromisoformat(inicio) if inicio else None
+        except ValueError:
+            inicio_dt = None
+        if inicio_dt is None:
+            from datetime import timedelta
+            inicio_dt = fin - timedelta(seconds=duracion_seg)
+
+        pasos = []
+        if detalle_pasos_raw:
+            try:
+                parsed = json_lib.loads(detalle_pasos_raw)
+                if isinstance(parsed, list):
+                    pasos = parsed
+            except (ValueError, TypeError):
+                pasos = []
+
+        # XP: se calcula del catálogo (fuente de verdad), no del cliente.
+        ej = ejercicios_dominio.obtener_ejercicio(ejercicio)
+        xp_catalogo = {p["id"]: int(p.get("xp", 0)) for p in ej.get("pasos", [])}
+        xp_ganado = sum(
+            xp_catalogo.get(str(p.get("id")), 0)
+            for p in pasos
+            if isinstance(p, dict) and p.get("completado")
+        )
+
+        doc = {
+            "usuario": user_id,
+            "ejercicio": ejercicio,
+            "cancion_id": cancion_id,
+            "sesion_id": sesion_id,
+            "inicio": inicio_dt.isoformat(),
+            "fin": fin.isoformat(),
+            "duracion_seg": duracion_seg,
+            "pasos": pasos,
+            "puntuacion": round(float(puntuacion), 1) if puntuacion is not None else None,
+            "estrellas": max(0, min(3, int(estrellas))) if estrellas is not None else None,
+            "notas_acertadas": notas_acertadas,
+            "notas_totales": notas_totales,
+            "precision": round(float(precision), 4),
+            "consistencia": round(float(consistencia), 4),
+            "aprobado": aprobado,
+            "xp_ganado": xp_ganado,
+            "fecha": fin.isoformat(),
+        }
+        result = intentos_ejercicio.insert_one(doc)
+        return {
+            "id": str(result.inserted_id),
+            "xp_ganado": xp_ganado,
+            "puntuacion": doc["puntuacion"],
+            "estrellas": doc["estrellas"],
+        }
+    except Exception:
+        return None
 
 
 def _actualizar_adaptativo(user_id, ejercicio_id, precision, consistencia,
