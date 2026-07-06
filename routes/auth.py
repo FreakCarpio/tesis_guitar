@@ -49,10 +49,13 @@ class OnboardingRequest(BaseModel):
     - experiencia: nunca | principiante | intermedio | avanzado
     - objetivo: aprender_desde_cero | mejorar_tecnica | aprender_canciones | practicar_diario
     - completado: True cuando el usuario terminó todo el flujo (afinador + 1ª práctica)
+    - afinacion_omitida: True si decidió omitir el afinador del onboarding
+      ("Afinar después"); vuelve a False con su primera afinación real.
     """
     experiencia: Optional[str] = None
     objetivo: Optional[str] = None
     completado: Optional[bool] = None
+    afinacion_omitida: Optional[bool] = None
 
 
 # La experiencia declarada define el nivel inicial que usa Wilfredo.
@@ -93,6 +96,7 @@ def _perfil_publico(doc: dict) -> dict:
         "experiencia": doc.get("experiencia"),
         "objetivo": doc.get("objetivo"),
         "onboarding_completado": bool(doc.get("onboarding_completado", False)),
+        "afinacion_omitida": bool(doc.get("afinacion_omitida", False)),
         "fecha_registro": doc.get("fecha_registro"),
         "ultima_sesion": doc.get("ultima_sesion"),
         "estadisticas": _estadisticas(doc["user_id"]),
@@ -170,6 +174,8 @@ async def save_onboarding(user_id: str, req: OnboardingRequest):
         updates["objetivo"] = req.objetivo.lower().strip()
     if req.completado is not None:
         updates["onboarding_completado"] = req.completado
+    if req.afinacion_omitida is not None:
+        updates["afinacion_omitida"] = req.afinacion_omitida
     if not updates:
         raise HTTPException(status_code=400, detail="No se enviaron datos de onboarding.")
 

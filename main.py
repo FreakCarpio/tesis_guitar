@@ -158,6 +158,11 @@ async def practice(
         }
     )
 
+    # Practicar el ejercicio de afinación cuenta como afinación real:
+    # apaga el aviso de "guitarra sin afinar" (onboarding omitido).
+    if ejercicio == "afinacion":
+        usuarios.update_one({"user_id": user_id}, {"$set": {"afinacion_omitida": False}})
+
     # ----------------------------------------------------------------------
     # Registro de sesión de práctica
     # Guarda los resultados individuales obtenidos durante la ejecución
