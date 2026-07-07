@@ -175,8 +175,18 @@ async def wilfredo_chat(req: ChatRequest):
         }
     """
     try:
-        # P1.6: modo TUTOR con memoria si llega user_id y el usuario existe.
+        # MC8: Motor Cognitivo (RIFF) — Context Builder selectivo +
+        # LLMProvider con fallback determinístico y memoria conversacional.
         if req.user_id:
+            try:
+                from ia.cognitivo import riff
+                resultado = riff.responder(req.user_id, req.mensaje)
+                if resultado is not None:
+                    return success_response(resultado)
+            except Exception:
+                pass  # cae al tutor P1.6 de abajo (retrocompatibilidad)
+
+            # Fallback P1.6: tutor clásico con contexto (código intacto).
             from services.wilfredo_context import construir_contexto
             from services.wilfredo_service import generate_tutor_response
             ctx = construir_contexto(req.user_id)

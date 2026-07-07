@@ -38,6 +38,10 @@ habilidad_eventos = db["habilidad_eventos"]  # historial append-only de cambios 
 camino_usuario = db["camino_usuario"]        # posición del usuario en el camino de aprendizaje
 recomendaciones = db["recomendaciones"]      # log auditable de decisiones del motor adaptativo
 
+# Motor Cognitivo - memoria conversacional de RIFF (últimos turnos por
+# usuario; la usa el proveedor conversacional).
+conversaciones = db["conversaciones"]
+
 # Motor Cognitivo - planes diarios/semanales del Recommendation Engine.
 # Estables por clave (usuario+fecha / usuario+semana) para no cambiar el
 # plan cada vez que se consulta.
