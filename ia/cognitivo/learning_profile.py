@@ -32,7 +32,7 @@ from database import (
 from domain import ejercicios as ejercicios_dominio
 from domain import habilidades as habilidades_dominio
 from ia import motor_adaptativo_v1 as motor
-from ia.cognitivo import progress_intelligence
+from ia.cognitivo import progress_intelligence, skill_analyzer
 
 VERSION_PERFIL = 1
 
@@ -249,6 +249,9 @@ def reconstruir_perfil(user_id: str) -> dict | None:
         "canciones": _canciones_aprendiendo(user_id, intentos),
         "hitos_recientes": progress_intelligence.obtener_hitos(user_id, limite=5),
         "estado": progress_intelligence.estado_aprendizaje(user_id),
+        # MC3: análisis por evidencia de pasos (fortalezas/debilidades reales,
+        # tipos de paso con error frecuente).
+        "analisis": skill_analyzer.analizar(user_id, intentos),
     }
 
     perfil_aprendizaje.update_one(
