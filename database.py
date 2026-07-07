@@ -38,6 +38,10 @@ habilidad_eventos = db["habilidad_eventos"]  # historial append-only de cambios 
 camino_usuario = db["camino_usuario"]        # posición del usuario en el camino de aprendizaje
 recomendaciones = db["recomendaciones"]      # log auditable de decisiones del motor adaptativo
 
+# Motor Cognitivo - hitos detectados por Progress Intelligence
+# (logros, evolución, estancamiento, recaídas). Deduplicados por `clave`.
+hitos = db["hitos"]
+
 # Motor Cognitivo - perfil dinámico del estudiante (Learning Profile).
 # Se reconstruye tras cada práctica (hook best-effort en /practica) y es la
 # memoria de largo plazo que alimentan y consultan los módulos cognitivos.

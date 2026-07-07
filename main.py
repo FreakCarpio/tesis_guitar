@@ -269,12 +269,25 @@ async def practice(
     )
 
     # ----------------------------------------------------------------------
-    # Motor Cognitivo (MC1): el Learning Profile se reconstruye tras cada
-    # práctica. Best-effort: si falla, la sesión ya quedó persistida.
+    # Motor Cognitivo (MC1+MC2): tras cada práctica se reconstruye el
+    # Learning Profile y Progress Intelligence detecta hitos (logros,
+    # evolución, estancamiento, recaídas). Best-effort: si falla, la
+    # sesión ya quedó persistida.
     # ----------------------------------------------------------------------
     try:
-        from ia.cognitivo import learning_profile
-        learning_profile.reconstruir_perfil(user_id)
+        from database import perfil_aprendizaje as _perfil_col
+        from ia.cognitivo import learning_profile, progress_intelligence
+        _perfil = learning_profile.reconstruir_perfil(user_id)
+        if _perfil:
+            progress_intelligence.analizar_tras_practica(
+                user_id,
+                racha=_perfil["desempeno"]["racha"],
+                xp_total=_perfil["desempeno"]["xp_total"],
+            )
+            _perfil_col.update_one({"usuario": user_id}, {"$set": {
+                "hitos_recientes": progress_intelligence.obtener_hitos(user_id, 5),
+                "estado": progress_intelligence.estado_aprendizaje(user_id),
+            }})
     except Exception:
         pass
 

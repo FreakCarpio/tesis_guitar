@@ -6,9 +6,23 @@ GET /perfil/{user_id}/aprendizaje -> Learning Profile dinámico (MC1)
 
 from fastapi import APIRouter, HTTPException
 
-from ia.cognitivo import learning_profile
+from database import usuarios
+from ia.cognitivo import learning_profile, progress_intelligence
 
 router = APIRouter(tags=["cognitivo"])
+
+
+@router.get("/perfil/{user_id}/hitos")
+async def get_hitos(user_id: str, limite: int = 20):
+    """Hitos detectados por Progress Intelligence (logros, evolución,
+    estancamiento, recaídas), más recientes primero."""
+    if usuarios.find_one({"user_id": user_id}) is None:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado.")
+    return {
+        "usuario": user_id,
+        "hitos": progress_intelligence.obtener_hitos(user_id, limite),
+        "estado": progress_intelligence.estado_aprendizaje(user_id),
+    }
 
 
 @router.get("/perfil/{user_id}/aprendizaje")
