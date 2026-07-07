@@ -7,6 +7,7 @@ GET /perfil/{user_id}/aprendizaje -> Learning Profile dinámico (MC1)
 from fastapi import APIRouter, HTTPException
 
 from database import usuarios
+from domain import conocimiento
 from ia.cognitivo import learning_profile, progress_intelligence, recommendation_engine
 
 router = APIRouter(tags=["cognitivo"])
@@ -45,6 +46,14 @@ async def get_hitos(user_id: str, limite: int = 20):
         "hitos": progress_intelligence.obtener_hitos(user_id, limite),
         "estado": progress_intelligence.estado_aprendizaje(user_id),
     }
+
+
+@router.get("/conocimiento/buscar")
+async def buscar_conocimiento(q: str, nivel: str | None = None, k: int = 3):
+    """Base de Conocimiento de guitarra (curada): búsqueda determinística."""
+    resultados = conocimiento.buscar(q, nivel=nivel, k=k)
+    return {"consulta": q, "resultados": resultados, "total": len(resultados),
+            "categorias": conocimiento.CATEGORIAS}
 
 
 @router.get("/perfil/{user_id}/aprendizaje")
