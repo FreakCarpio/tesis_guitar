@@ -28,6 +28,7 @@ from routes.camino import router as camino_router
 from routes.entrenador import router as entrenador_router
 from routes.canciones import router as canciones_router
 from routes.biblioteca import router as biblioteca_router
+from routes.cognitivo import router as cognitivo_router
 from domain import ejercicios as ejercicios_dominio
 from domain import habilidades as habilidades_dominio
 from domain import camino as camino_dominio
@@ -75,6 +76,7 @@ app.include_router(camino_router)
 app.include_router(entrenador_router)
 app.include_router(canciones_router)
 app.include_router(biblioteca_router)
+app.include_router(cognitivo_router)
 
 model = modelo_adaptativo()
 analyzer = SignalAnalyzer()
@@ -265,6 +267,16 @@ async def practice(
         inicio=inicio,
         detalle_pasos_raw=detalle_pasos,
     )
+
+    # ----------------------------------------------------------------------
+    # Motor Cognitivo (MC1): el Learning Profile se reconstruye tras cada
+    # práctica. Best-effort: si falla, la sesión ya quedó persistida.
+    # ----------------------------------------------------------------------
+    try:
+        from ia.cognitivo import learning_profile
+        learning_profile.reconstruir_perfil(user_id)
+    except Exception:
+        pass
 
     return {
         "metrics": metrics,
