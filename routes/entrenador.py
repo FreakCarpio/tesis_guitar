@@ -18,6 +18,7 @@ from domain import camino as camino_dominio
 from domain import habilidades as habilidades_dominio
 from ia import motor_adaptativo_v1 as motor
 from ia import motor_config as cfg
+from ia.cognitivo import adaptive_engine
 
 router = APIRouter(prefix="/entrenador", tags=["entrenador"])
 
@@ -49,8 +50,12 @@ def _proximo_logro(camino: dict, doc_hab: dict) -> dict:
 
 @router.get("/{user_id}")
 async def get_entrenador(user_id: str, tz_offset_min: int = 0):
-    """Payload completo del entrenador para la Home."""
-    resultado = motor.decidir(user_id, offset_min=tz_offset_min)
+    """Payload completo del entrenador para la Home.
+
+    MC4: decide el Adaptive Engine v2 (motor v1 + señales del Learning
+    Profile). El shape de la respuesta es idéntico al de siempre.
+    """
+    resultado = adaptive_engine.decidir(user_id, offset_min=tz_offset_min)
     if resultado is None:
         raise HTTPException(status_code=404, detail="Usuario no encontrado.")
 
