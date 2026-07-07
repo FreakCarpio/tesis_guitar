@@ -7,9 +7,31 @@ GET /perfil/{user_id}/aprendizaje -> Learning Profile dinámico (MC1)
 from fastapi import APIRouter, HTTPException
 
 from database import usuarios
-from ia.cognitivo import learning_profile, progress_intelligence
+from ia.cognitivo import learning_profile, progress_intelligence, recommendation_engine
 
 router = APIRouter(tags=["cognitivo"])
+
+
+@router.get("/plan/{user_id}/diario")
+async def get_plan_diario(user_id: str, tz_offset_min: int = 0, regenerar: bool = False):
+    """Plan del día (estable): calentamiento + recomendación del motor v2 +
+    canción en aprendizaje, con duración total y XP potencial."""
+    plan = recommendation_engine.plan_diario(user_id, tz_offset_min, regenerar)
+    if plan is None:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado.")
+    plan.pop("_id", None)
+    return plan
+
+
+@router.get("/plan/{user_id}/semanal")
+async def get_plan_semanal(user_id: str, tz_offset_min: int = 0, regenerar: bool = False):
+    """Plan de la semana ISO en curso (estable): focos por día según
+    debilidades con evidencia, consolidación y su canción."""
+    plan = recommendation_engine.plan_semanal(user_id, tz_offset_min, regenerar)
+    if plan is None:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado.")
+    plan.pop("_id", None)
+    return plan
 
 
 @router.get("/perfil/{user_id}/hitos")

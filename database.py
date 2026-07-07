@@ -38,6 +38,11 @@ habilidad_eventos = db["habilidad_eventos"]  # historial append-only de cambios 
 camino_usuario = db["camino_usuario"]        # posición del usuario en el camino de aprendizaje
 recomendaciones = db["recomendaciones"]      # log auditable de decisiones del motor adaptativo
 
+# Motor Cognitivo - planes diarios/semanales del Recommendation Engine.
+# Estables por clave (usuario+fecha / usuario+semana) para no cambiar el
+# plan cada vez que se consulta.
+planes = db["planes"]
+
 # Motor Cognitivo - hitos detectados por Progress Intelligence
 # (logros, evolución, estancamiento, recaídas). Deduplicados por `clave`.
 hitos = db["hitos"]
