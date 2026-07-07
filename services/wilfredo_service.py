@@ -146,6 +146,99 @@ def generate_chat_response(mensaje: str, nivel: str = "principiante") -> str:
     return responses[random.randint(0, 2)]
 
 
+def generate_tutor_response(mensaje: str, ctx: dict) -> str:
+    """Respuesta de Wilfredo como TUTOR con memoria de desempeño (P1.6).
+
+    Usa el contexto real del usuario (perfil, habilidades, racha, intentos,
+    biblioteca, recomendación del motor) para responder como un profesor
+    que recuerda cómo toca el alumno. Determinístico: intenciones por
+    palabras clave; si ninguna aplica, cae en las reglas genéricas.
+    """
+    msg = mensaje.lower()
+    nombre = ctx.get("nombre")
+    saludo_nombre = f", {nombre}" if nombre else ""
+
+    # --- ¿Qué practico ahora? -> recomendación real del motor ---
+    if any(s in msg for s in ["qué practico", "que practico", "qué hago", "que hago",
+                              "recomien", "siguiente", "ahora", "hoy toca", "practicar hoy"]):
+        rec = ctx.get("recomendacion")
+        ej = ctx.get("ejercicio_recomendado")
+        if rec and rec.get("tipo") == "descanso":
+            return f"Hoy ya practicaste {int(ctx['minutos_hoy'])} min{saludo_nombre}. {rec['razon']}"
+        if rec and ej:
+            return (f"Te recomiendo {ej['nombre']} ({ej['duracion_min']} min, "
+                    f"dificultad {rec.get('dificultad', ej['dificultad'])}/5). "
+                    f"¿Por qué? {rec['razon']}")
+
+    # --- ¿Cómo voy? -> progreso real ---
+    if any(s in msg for s in ["cómo voy", "como voy", "progreso", "avance", "estadística",
+                              "estadistica", "racha", "mejorando"]):
+        partes = []
+        if ctx.get("total_sesiones", 0) == 0:
+            return (f"Aún no registras prácticas{saludo_nombre}. Completa tu primera "
+                    f"sesión y podré contarte exactamente cómo avanzas. 🎸")
+        if ctx.get("racha", 0) > 0:
+            partes.append(f"llevas {ctx['racha']} día(s) de racha")
+        if ctx.get("promedio_puntuacion") is not None:
+            partes.append(f"tu puntuación media reciente es {int(ctx['promedio_puntuacion'])}/100")
+        if ctx.get("tendencia") == "mejorando":
+            partes.append("y vas mejorando 📈")
+        elif ctx.get("tendencia") == "bajando":
+            partes.append("aunque tus últimos intentos bajaron un poco: sin prisa, vuelve a lo básico")
+        fuerte = (ctx.get("fuertes") or [{}])[0].get("nombre")
+        debil = (ctx.get("debiles") or [{}])[0].get("nombre")
+        extra = f" Tu punto fuerte es {fuerte} y te conviene reforzar {debil}." if fuerte and debil else ""
+        cuerpo = ", ".join(partes) if partes else f"llevas {ctx['total_sesiones']} sesiones registradas"
+        return f"Vas así{saludo_nombre}: {cuerpo}.{extra}"
+
+    # --- ¿Cómo me fue? -> último intento (memoria) ---
+    if any(s in msg for s in ["última", "ultima", "último", "ultimo", "me fue", "resultado", "ayer"]):
+        u = ctx.get("ultimo_intento")
+        if not u:
+            return "Todavía no tienes intentos registrados. ¡Tu primera práctica te espera! 🎸"
+        base = f"Tu último intento fue de «{u['ejercicio']}»"
+        if u.get("estrellas") is not None:
+            base += f": {u['estrellas']}⭐ con {int(u.get('puntuacion') or 0)}/100"
+        elif u.get("precision") is not None:
+            base += f": precisión {int(u['precision'] * 100)}%"
+        consejo = (" ¡Gran trabajo, sube la dificultad!" if (u.get("puntuacion") or 0) >= 85
+                   else " Repítelo una vez más para afianzarlo." if (u.get("puntuacion") or 0) >= 40
+                   else " Bajemos el tempo y vamos por partes, sin frustrarse. 🐢")
+        return base + "." + consejo
+
+    # --- Canciones -> biblioteca real ---
+    if any(s in msg for s in ["canción", "cancion", "biblioteca", "guardad", "favorit", "tocar una"]):
+        canciones = ctx.get("canciones") or []
+        if not canciones:
+            return ("Aún no guardas canciones. Busca una que te guste y tócala: "
+                    "practicar con música real motiva el doble. 🎵")
+        nombres = ", ".join(f"«{c['titulo']}»" for c in canciones[:3])
+        return (f"En tu biblioteca tienes {nombres}. Elige una y usa el botón "
+                f"Practicar: te preparo objetivos a tu medida. 🎸")
+
+    # --- Frustración -> apoyo con datos ---
+    if any(s in msg for s in ["difícil", "dificil", "no me sale", "no puedo", "frustra", "mal", "duro"]):
+        debil = (ctx.get("debiles") or [{}])[0].get("nombre", "esa técnica")
+        racha = ctx.get("racha", 0)
+        animo = f"Llevas {racha} día(s) seguidos practicando: eso ya te separa de la mayoría. " if racha > 0 else ""
+        return (f"{animo}Es normal que {debil} cueste al principio{saludo_nombre}. "
+                f"Baja la velocidad a la mitad y celebra cada repetición limpia: "
+                f"el cerebro aprende de la precisión, no de la prisa. 💪")
+
+    # --- Saludo personalizado con memoria ---
+    if any(s in msg for s in ["hola", "hi", "hello", "buenos", "buenas", "ey"]):
+        memoria = ""
+        u = ctx.get("ultimo_intento")
+        if u:
+            memoria = f" La última vez practicaste «{u['ejercicio']}»."
+        racha = ctx.get("racha", 0)
+        r = f" ¡{racha} días de racha! 🔥" if racha >= 2 else ""
+        return f"¡Hola{saludo_nombre}! 🎸{r}{memoria} ¿Practicamos?"
+
+    # Sin intención clara: reglas genéricas de siempre.
+    return generate_chat_response(mensaje, ctx.get("nivel", "principiante"))
+
+
 def generate_song_plan(titulo: str, artista: str, dificultad: Optional[str] = None,
                        tiene_acordes: bool = True, nivel: str = "principiante") -> dict:
     """Objetivos de práctica para una canción concreta (determinístico).
