@@ -67,7 +67,10 @@ EJERCICIOS = [
         "dificultad": 1,
         "duracion_min": 5,
         "objetivo": "Tocar cuerdas al aire afinadas y estables",
-        "criterios": _crit_sostenido(0.65, 0.85, 60),
+        # Duración 10 s (no 60): la práctica en vivo cierra cada paso al
+        # validar la cuerda (6 pasos ≈ 15-30 s reales); con 60 s el ejercicio
+        # era imposible de aprobar. El filtro de calidad son las métricas.
+        "criterios": _crit_sostenido(0.65, 0.85, 10),
     },
     {
         "id": "acordes",

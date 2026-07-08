@@ -98,6 +98,79 @@ class MetricsExtractor:
             "frames_analizados": len(frequencies)
         }
 
+    def evaluate_tuning(self, signal, sample_rate):
+        """Evalúa una grabación de AFINACIÓN con varias cuerdas distintas.
+
+        evaluate_sequence compara la frecuencia media de TODO el audio contra
+        una única nota objetivo: correcto para una nota sostenida, pero sin
+        sentido para el ejercicio de afinación, cuya grabación contiene las 6
+        cuerdas al aire (el promedio de E2..E4 no es ninguna nota y las
+        métricas salían ~0).
+
+        Aquí cada segmento se evalúa contra SU semitono más cercano:
+        - precisión  = qué tan centrada está cada cuerda en su nota (cents)
+        - consistencia = estabilidad de la frecuencia DENTRO de cada nota
+          detectada (agrupando segmentos por nota), promediada entre notas
+
+        Devuelve el mismo shape de dict que evaluate_sequence.
+        """
+        # ~1 segmento por segundo de audio, acotado para WAVs muy cortos/largos.
+        n_segments = int(np.clip(len(signal) // sample_rate, 8, 32))
+        segment_length = len(signal) // n_segments
+        if segment_length == 0:
+            return self.evaluate(signal, sample_rate, 440.0)
+
+        precisiones = []
+        confidences = []
+        freqs_por_nota = {}
+
+        for i in range(n_segments):
+            segment = signal[i * segment_length:(i + 1) * segment_length]
+            if np.max(np.abs(segment)) <= 0.01:
+                continue
+            freq, conf, _ = self.detect_pitch(segment, sample_rate)
+            if freq <= 0 or conf <= 0.3:
+                continue
+            target = 440.0 * 2 ** (round(12 * np.log2(freq / 440.0)) / 12)
+            cents = 1200 * np.log2(freq / target)
+            precisiones.append(max(0, 1 - abs(cents) / 50))
+            confidences.append(conf)
+            freqs_por_nota.setdefault(self.frequency_to_note(freq), []).append(freq)
+
+        if not precisiones:
+            return {
+                "precision": 0.0,
+                "consistencia": 0.0,
+                "error": 0.0,
+                "error_cents": 0.0,
+                "detected_freq": 0.0,
+                "nota_detectada": "Silencio/Error",
+                "confianza": 0.0,
+                "frames_analizados": 0,
+            }
+
+        consistencias = []
+        for freqs in freqs_por_nota.values():
+            mean = np.mean(freqs)
+            cv = np.std(freqs) / mean if mean > 0 else 1
+            consistencias.append(max(0, 1 - cv * 5))
+
+        # Nota más presente en la grabación (informativa) y error medio en cents.
+        nota_principal = max(freqs_por_nota, key=lambda n: len(freqs_por_nota[n]))
+        mean_freq = float(np.mean(freqs_por_nota[nota_principal]))
+        error_cents = float(np.mean([(1 - p) * 50 for p in precisiones]))
+
+        return {
+            "precision": float(np.mean(precisiones)),
+            "consistencia": float(np.mean(consistencias)),
+            "error": float(mean_freq * (2 ** (error_cents / 1200) - 1)),
+            "error_cents": error_cents,
+            "detected_freq": mean_freq,
+            "nota_detectada": nota_principal,
+            "confianza": float(np.mean(confidences)),
+            "frames_analizados": len(precisiones),
+        }
+
     def frequency_to_note(self, freq):
         """convierto frecuencia a nota"""
         if freq <= 0:

@@ -145,9 +145,16 @@ async def practice(
         freq, _conf, _harm = extractor.detect_pitch(y, analyzer.sr)
         if freq is None or freq <= 0:
             raise HTTPException(status_code=422, detail="No se detectó señal de audio válida en la grabación.")
-        # Semitono (nota) más cercano como objetivo de referencia
-        target_freq = 440.0 * 2 ** (round(12 * math.log2(freq / 440.0)) / 12)
-        metrics = extractor.evaluate_sequence(y, analyzer.sr, target_freq)
+        if ejercicios_dominio.obtener_ejercicio(ejercicio)["habilidad"] == "afinacion":
+            # Afinación: el WAV contiene las 6 cuerdas (notas distintas);
+            # cada segmento se evalúa contra su propio semitono. Comparar la
+            # media global contra una sola nota daba métricas ~0 y el paso
+            # del camino nunca podía aprobarse.
+            metrics = extractor.evaluate_tuning(y, analyzer.sr)
+        else:
+            # Semitono (nota) más cercano como objetivo de referencia
+            target_freq = 440.0 * 2 ** (round(12 * math.log2(freq / 440.0)) / 12)
+            metrics = extractor.evaluate_sequence(y, analyzer.sr, target_freq)
     finally:
         if os.path.exists(filepath):
             os.remove(filepath)
@@ -357,6 +364,9 @@ def _registrar_intento(user_id, ejercicio, cancion_id, sesion_id, duracion_seg,
             "xp_ganado": xp_ganado,
             "puntuacion": doc["puntuacion"],
             "estrellas": doc["estrellas"],
+            # Aditivo: progreso real del ejercicio en vivo (objetivos logrados).
+            "notas_acertadas": notas_acertadas,
+            "notas_totales": notas_totales,
         }
     except Exception:
         return None
