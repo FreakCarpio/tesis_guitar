@@ -221,6 +221,10 @@ async def practice(
         if vivo is not None:
             precision = vivo["precision"]
             consistencia = vivo["consistencia"]
+            # El WAV se conserva como referencia (nota/error en Hz), pero las
+            # métricas que gobiernan progreso y respuesta son las de la sesión.
+            metrics = {**metrics, "precision": precision, "consistencia": consistencia,
+                       "fuente": "sesion_en_vivo"}
 
     # ----------------------------------------------------------------------
     # Actualización de datos generales del usuario
