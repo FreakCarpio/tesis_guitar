@@ -52,6 +52,9 @@ class ChatRequest(BaseModel):
     mensaje: str = Field(..., description="Mensaje del usuario")
     nivel: str = Field(default="principiante", description="Nivel del usuario")
     historial: List[str] = Field(default_factory=list, description="Historial de mensajes")
+    # P1.6: con user_id Wilfredo responde como TUTOR con memoria del
+    # desempeño real del usuario. Sin user_id: comportamiento clásico.
+    user_id: Optional[str] = Field(default=None, description="Usuario para respuestas personalizadas")
 
 
 class AnalyzeRequest(BaseModel):
@@ -172,23 +175,36 @@ async def wilfredo_chat(req: ChatRequest):
         }
     """
     try:
-        # Se detecta el nivel del usuario basándose en el mensaje
-        # La función evaluate_user_level anal palabras clave
+        # MC8: Motor Cognitivo (RIFF) — Context Builder selectivo +
+        # LLMProvider con fallback determinístico y memoria conversacional.
+        if req.user_id:
+            try:
+                from ia.cognitivo import riff
+                resultado = riff.responder(req.user_id, req.mensaje)
+                if resultado is not None:
+                    return success_response(resultado)
+            except Exception:
+                pass  # cae al tutor P1.6 de abajo (retrocompatibilidad)
+
+            # Fallback P1.6: tutor clásico con contexto (código intacto).
+            from services.wilfredo_context import construir_contexto
+            from services.wilfredo_service import generate_tutor_response
+            ctx = construir_contexto(req.user_id)
+            if ctx is not None:
+                return success_response({
+                    "respuesta": generate_tutor_response(req.mensaje, ctx),
+                    "nivel": ctx.get("nivel", req.nivel),
+                })
+
+        # Modo clásico (sin usuario): reglas genéricas.
         nivel_detectado = evaluate_user_level(req.mensaje)
-        
-        # Si se detecta un nivel diferente, se usa ese
-        # Esto permite que el sistema descubra el nivel automáticamente
         nivel = nivel_detectado if nivel_detectado != "principiante" else req.nivel
-        
-        # Se genera la respuesta usando la lógica de reglas
         respuesta = generate_chat_response(req.mensaje, nivel)
-        
-        # Se retorna en formato estructurado
         return success_response({
             "respuesta": respuesta,
             "nivel": nivel
         })
-        
+
     except Exception as e:
         # Manejo de errores - se retorna mensaje claro
         return error_response(f"Error al procesar chat: {str(e)}")

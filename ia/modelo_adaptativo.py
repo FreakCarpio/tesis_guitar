@@ -8,8 +8,8 @@ class modelo_adaptativo:
         profile.precision_avg = (
             self.alpha * profile.precision_avg + (1 - self.alpha) * precision # Actualiza el promedio de precisión combina valor anterior + nuevo valor medido
         )
-        profile.consistency_avg = (  # Actualiza el promedio de consistencia mantiene estabilidad histórica del desempeño
-            self.alpha * profile.consistency_avg + (1 - self.alpha) * consistency
+        profile.consistencia_avg = (  # Actualiza el promedio de consistencia mantiene estabilidad histórica del desempeño
+            self.alpha * profile.consistencia_avg + (1 - self.alpha) * consistency
         )
         profile.error_avg = ( 
             self.alpha * profile.error_avg + (1 - self.alpha) * error #Actualiza el promedio de error permite seguir la evolución del usuario en fallos o desviaciones
