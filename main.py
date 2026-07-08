@@ -11,6 +11,7 @@ import json as json_lib
 from fastapi.middleware.cors import CORSMiddleware
 import shutil
 import os
+import statistics
 import tempfile
 import math
 from datetime import date, datetime, timezone
@@ -88,6 +89,50 @@ extractor = MetricsExtractor()
 profiles = {}
 
 
+def _parsear_pasos(detalle_pasos_raw) -> list:
+    """Parsea el JSON de resultados por paso enviado por el cliente."""
+    if not detalle_pasos_raw:
+        return []
+    try:
+        parsed = json_lib.loads(detalle_pasos_raw)
+        return parsed if isinstance(parsed, list) else []
+    except (ValueError, TypeError):
+        return []
+
+
+def _metricas_en_vivo(notas_acertadas, notas_totales, pasos) -> dict | None:
+    """Precisión y consistencia REALES desde la sesión guiada en vivo.
+
+    La detección en el dispositivo (YIN + conteo de ataques) ya validó cada
+    objetivo del ejercicio; esa señal es fiel al desempeño. En cambio,
+    analizar el WAV completo contra UN único semitono (el más cercano a la
+    frecuencia media) solo tiene sentido para una nota sostenida: en
+    acordes, secuencias y escalas produce métricas ~0 y las habilidades
+    parecían no avanzar nunca.
+
+    - precision   = objetivos logrados / objetivos totales
+    - consistencia = media de las puntuaciones por paso, penalizada por su
+      dispersión (rendimiento parejo entre pasos = más consistente); con un
+      solo paso no hay dispersión que medir y equivale a la precisión.
+
+    Devuelve None si el cliente no envió datos en vivo (práctica libre o
+    clientes antiguos): el llamador conserva el análisis del WAV.
+    """
+    if not notas_totales or notas_totales <= 0:
+        return None
+    precision = max(0.0, min(1.0, (notas_acertadas or 0) / notas_totales))
+    scores = [
+        max(0.0, min(1.0, float(p.get("puntuacion", 0)) / 100.0))
+        for p in pasos
+        if isinstance(p, dict) and p.get("puntuacion") is not None
+    ]
+    if len(scores) >= 2:
+        consistencia = max(0.0, min(1.0, statistics.mean(scores) * (1.0 - statistics.pstdev(scores))))
+    else:
+        consistencia = precision
+    return {"precision": round(precision, 4), "consistencia": round(consistencia, 4)}
+
+
 @app.post("/practica")
 async def practice(
     user_id: str,
@@ -162,6 +207,20 @@ async def practice(
     precision = metrics["precision"]
     consistencia = metrics["consistencia"]
     error = metrics["error"]
+
+    # ----------------------------------------------------------------------
+    # Métricas reales de la práctica guiada en vivo
+    # Si el cliente envió los resultados de la sesión (objetivos logrados y
+    # puntuación por paso), esas métricas sustituyen al análisis del WAV,
+    # que compara contra un solo semitono y subestima cualquier ejercicio
+    # multinota. Afinación conserva evaluate_tuning (calidad en cents) y la
+    # práctica libre/clientes antiguos conservan el análisis del WAV.
+    # ----------------------------------------------------------------------
+    if ejercicios_dominio.obtener_ejercicio(ejercicio)["habilidad"] != "afinacion":
+        vivo = _metricas_en_vivo(notas_acertadas, notas_totales, _parsear_pasos(detalle_pasos))
+        if vivo is not None:
+            precision = vivo["precision"]
+            consistencia = vivo["consistencia"]
 
     # ----------------------------------------------------------------------
     # Actualización de datos generales del usuario
@@ -321,14 +380,7 @@ def _registrar_intento(user_id, ejercicio, cancion_id, sesion_id, duracion_seg,
             from datetime import timedelta
             inicio_dt = fin - timedelta(seconds=duracion_seg)
 
-        pasos = []
-        if detalle_pasos_raw:
-            try:
-                parsed = json_lib.loads(detalle_pasos_raw)
-                if isinstance(parsed, list):
-                    pasos = parsed
-            except (ValueError, TypeError):
-                pasos = []
+        pasos = _parsear_pasos(detalle_pasos_raw)
 
         # XP: se calcula del catálogo (fuente de verdad), no del cliente.
         ej = ejercicios_dominio.obtener_ejercicio(ejercicio)
