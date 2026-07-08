@@ -28,7 +28,10 @@ try {
     Pop-Location
 }
 
-# Relanza la app para que abra con la version nueva
-& $adb shell am force-stop $pkg
-& $adb shell monkey -p $pkg -c android.intent.category.LAUNCHER 1 | Out-Null
+# Relanza la app para que abra con la version nueva. El mismo cel puede
+# aparecer dos veces (mDNS + IP:puerto): se apunta al primer serial con -s
+# porque adb rechaza comandos shell ambiguos con varios dispositivos.
+$serial = ((& $adb devices) | Select-String "device$" | Select-Object -First 1).Line.Split()[0]
+& $adb -s $serial shell am force-stop $pkg
+& $adb -s $serial shell monkey -p $pkg -c android.intent.category.LAUNCHER 1 | Out-Null
 Write-Host "Listo: FretMind actualizado y abierto en el cel." -ForegroundColor Green
