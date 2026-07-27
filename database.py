@@ -65,3 +65,4 @@ intentos_ejercicio = db["intentos_ejercicio"]
 cancion_cache = db["cancion_cache"]          # detalle compuesto Songsterr+iTunes (TTL en lectura)
 busqueda_cache = db["busqueda_cache"]        # resultados de búsqueda Songsterr (TTL en lectura)
 biblioteca_usuario = db["biblioteca_usuario"]  # canciones guardadas/favoritas por usuario
+letra_cache = db["letra_cache"]              # letras LRCLIB por canción (TTL en lectura)
