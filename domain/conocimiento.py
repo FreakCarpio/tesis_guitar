@@ -282,6 +282,58 @@ ENTRADAS = [
        "y sucia también se graba... mal. Regla 3x: si sale limpio 3 veces seguidas, puedes "
        "acelerar un poco. Dormir bien consolida lo practicado ese día.",
        ["memoria muscular", "repeticiones", "lento", "automatico", "habito"]),
+
+    # --------------------- FAQ / CONCEPTOS BÁSICOS ---------------------
+    _e("que-es-acorde", "teoria", "¿Qué es un acorde?",
+       "Un acorde es un grupo de 3 o más notas que suenan a la vez y se llevan bien entre sí. "
+       "En la guitarra lo formas pisando varias cuerdas con la mano izquierda y rasgueándolas "
+       "juntas. Son el esqueleto de casi cualquier canción: con 4 o 5 acordes básicos (C, G, D, "
+       "Em, Am) ya puedes acompañar cientos de temas. Empieza por Em y Am, que son los más "
+       "cómodos para la mano.",
+       ["que es un acorde", "que es acorde", "acorde", "definicion acorde",
+        "que son los acordes"]),
+    _e("que-es-escala", "escalas", "¿Qué es una escala?",
+       "Una escala es una serie ordenada de notas que suben o bajan siguiendo un patrón de "
+       "distancias, como los peldaños de una escalera. Sirven para crear melodías y solos, "
+       "entrenar el oído y ganar agilidad en los dedos. Las dos que más vas a usar al inicio: "
+       "la escala mayor (el famoso Do-Re-Mi) y la pentatónica menor, la favorita del rock y el "
+       "blues. Practícalas lento y con metrónomo: son tu gimnasio musical.",
+       ["que es una escala", "que es escala", "escala", "definicion escala",
+        "para que sirven las escalas", "que son las escalas"]),
+    _e("que-es-afinar", "afinacion", "¿Qué significa afinar?",
+       "Afinar es ajustar la tensión de cada cuerda (girando su clavija) hasta que vibre "
+       "exactamente a la frecuencia que le corresponde: más tensa suena más aguda, más floja "
+       "más grave. Una guitarra desafinada hace que TODO suene mal aunque toques perfecto, y "
+       "además acostumbra mal a tu oído. Por eso se afina siempre antes de practicar: el "
+       "Afinador de FretMind te guía cuerda por cuerda en menos de un minuto.",
+       ["que significa afinar", "que es afinar", "para que afinar", "afinado",
+        "desafinado", "por que afinar"]),
+    _e("tablatura", "teoria", "¿Qué es una tablatura?",
+       "La tablatura (o tab) es la forma más fácil de leer música para guitarra: 6 líneas que "
+       "representan las 6 cuerdas (la de arriba es la 1ª, la más aguda) y números que indican "
+       "en qué traste pisar. Un 0 es cuerda al aire; un 3 en la línea de abajo es 6ª cuerda, "
+       "traste 3. No necesitas saber solfeo: se lee de izquierda a derecha y los números "
+       "apilados en vertical se tocan a la vez (acorde).",
+       ["tablatura", "tab", "tabs", "leer tablatura", "que es una tablatura",
+        "numeros", "partitura"]),
+    _e("arpegios", "tecnica", "¿Qué son los arpegios?",
+       "Un arpegio es tocar las notas de un acorde una por una en vez de todas a la vez: pisas "
+       "el acorde normal y haces sonar las cuerdas por separado, dejándolas resonar. Da ese "
+       "sonido de balada o intro delicada (piensa en «Nothing Else Matters»). Es el siguiente "
+       "paso natural cuando ya te salen los acordes: mismo esfuerzo de mano izquierda, nueva "
+       "musicalidad. Empieza arpegiando Em: 6ª cuerda con el pulgar y luego 3-2-1.",
+       ["arpegio", "arpegios", "que son los arpegios", "que es un arpegio",
+        "nota por nota", "balada"]),
+    _e("cuerdas-numeracion", "afinacion", "Cómo se numeran las cuerdas",
+       "Las cuerdas se cuentan desde la MÁS AGUDA (la más delgada, abajo cuando tocas): esa es "
+       "la 1ª (Mi agudo, E4). La 6ª es la más gruesa y grave (Mi grave, E2), la que queda "
+       "arriba, más cerca de tu cara. El orden completo de la 6ª a la 1ª es: Mi-La-Re-Sol-Si-Mi "
+       "(E-A-D-G-B-E). Ojo: confundir la numeración es normal al inicio porque la 1ª está "
+       "'abajo', pero en cifras y tablaturas siempre se usa esta convención.",
+       ["sexta cuerda", "primera cuerda", "segunda cuerda", "tercera cuerda",
+        "cuarta cuerda", "quinta cuerda", "que cuerda", "cual es la sexta",
+        "cual es la primera", "numeracion", "orden de las cuerdas", "mas grave",
+        "mas aguda", "gruesa", "delgada"]),
 ]
 
 _POR_ID = {e["id"]: e for e in ENTRADAS}
