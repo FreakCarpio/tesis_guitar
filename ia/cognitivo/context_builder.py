@@ -84,6 +84,12 @@ def construir(user_id: str, mensaje: str, tz_offset_min: int = 0) -> dict | None
             ctx["recomendacion"] = decision["recomendacion"]
             ctx["ejercicio_recomendado"] = decision.get("ejercicio")
         ctx["minutos_hoy"] = desempeno.get("minutos_hoy", 0)
+        # Color pedagógico para la respuesta: qué le cuesta y una canción
+        # suya para cerrar la sesión (como haría un profesor real).
+        ctx["debilidades"] = _top((perfil.get("analisis") or {}).get("debilidades"), 2)
+        canciones = perfil.get("canciones") or []
+        pendiente = next((c for c in canciones if c.get("estado") != "dominada"), None)
+        ctx["cancion_sugerida"] = pendiente or (canciones[0] if canciones else None)
 
     if intencion in ("progreso", "frustracion", "saludo"):
         analisis = perfil.get("analisis", {})

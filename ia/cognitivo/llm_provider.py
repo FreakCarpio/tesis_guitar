@@ -61,9 +61,19 @@ class ReglasProvider(LLMProvider):
             if rec and rec.get("tipo") == "descanso":
                 return f"Hoy ya practicaste {int(ctx.get('minutos_hoy', 0))} min{saludo_nombre}. {rec['razon']}"
             if rec and ej:
-                return (f"Te recomiendo {ej['nombre']} ({ej['duracion_min']} min, "
-                        f"dificultad {rec.get('dificultad', ej['dificultad'])}/5). "
-                        f"¿Por qué? {rec['razon']}")
+                partes = []
+                debil = (ctx.get("debilidades") or [{}])[0].get("nombre")
+                if debil:
+                    partes.append(f"He visto que todavía puedes mejorar "
+                                  f"{debil.lower()}{saludo_nombre}.")
+                partes.append(f"Te recomiendo empezar con {ej['nombre']} "
+                              f"({ej['duracion_min']} min, dificultad "
+                              f"{rec.get('dificultad', ej['dificultad'])}/5): {rec['razon']}")
+                cancion = ctx.get("cancion_sugerida")
+                if cancion and cancion.get("titulo"):
+                    partes.append(f"Y para cerrar la sesión, toca «{cancion['titulo']}»: "
+                                  f"aplicar lo practicado en música real es lo que lo fija. 🎸")
+                return " ".join(partes)
 
         if intencion == "progreso":
             if ctx.get("total_intentos", 0) == 0:
