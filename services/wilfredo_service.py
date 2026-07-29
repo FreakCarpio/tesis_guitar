@@ -130,6 +130,14 @@ def generate_chat_response(mensaje: str, nivel: str = "principiante") -> str:
                               "que haces", "qué sabes", "que sabes"]):
         return random.choice(HELP_OFFERS)
 
+    # Base de Conocimiento: también en modo clásico (sin user_id) las dudas
+    # de teoría/técnica ("¿qué es una tablatura?") merecen contenido real.
+    from domain import conocimiento as conocimiento_dominio
+    entradas = conocimiento_dominio.buscar(mensaje, nivel=nivel, k=1)
+    if entradas:
+        k = entradas[0]
+        return f"📚 {k['titulo']}. {k['contenido']}"
+
     # tema afinación
     if any(s in msg for s in ["afin", "tuner", "frecuencia"]):
         return ("Para afinar: abre el Afinador, toca una cuerda y mira los cents. "
@@ -137,9 +145,10 @@ def generate_chat_response(mensaje: str, nivel: str = "principiante") -> str:
                 "si marca positivo, afloja. 🎵")
 
     # tema acordes ("am"/"c"/"g"/"d" solo como palabra exacta: antes "te amo"
-    # disparaba esta regla por el "am" interno)
-    if ("acorde" in msg or "chord" in msg or
-            tokens & {"am", "em", "c", "g", "d", "do", "re", "mi", "fa", "sol", "la", "si"}):
+    # disparaba esta regla por el "am" interno; las notas en español
+    # ("la", "mi", "si", "sol"...) quedan fuera por ambiguas con artículos
+    # y posesivos — de esas se encarga la Base de Conocimiento de arriba)
+    if "acorde" in msg or "chord" in msg or tokens & {"am", "em", "c", "g", "d"}:
         return f"Nivel {nivel}: Practica acordes básicos: C, G, D, Am, Em. Son la base. 🎸"
 
     # ejercicios
