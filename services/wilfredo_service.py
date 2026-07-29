@@ -100,25 +100,48 @@ def generate_practice_feedback(metricas: dict) -> str:
 
 
 def generate_chat_response(mensaje: str, nivel: str = "principiante") -> str:
-    """respuesta del chat - sin ia, solo reglas"""
+    """respuesta del chat - sin ia, solo reglas.
+
+    Ahora con la capa social de RIFF por delante (saludos, gracias,
+    despedidas, cariño... con variantes) y fallback amable: nunca
+    responde "no entendí".
+    """
+    # Capa social compartida con el Motor Cognitivo (sin dependencia
+    # circular: conversacion no importa nada de services).
+    from ia.cognitivo import conversacion
+
+    social = conversacion.detectar(mensaje)
+    if social:
+        r = conversacion.responder(social)
+        if r:
+            return r
+
     msg = mensaje.lower()
-    
-    # saludos
-    if any(s in msg for s in ["hola", "hi", "hello", "buenos", "ey"]):
-        return random.choice(GREETINGS)
-    
+    tokens = set(msg.replace("¿", " ").replace("?", " ").replace(",", " ").split())
+
+    # saludos (por token: "hola" suelto sí; "hola" dentro de otra palabra no)
+    if tokens & {"hola", "hi", "hello", "buenos", "buenas", "hey"}:
+        return conversacion.responder(
+            "saludo_manana" if conversacion.es_saludo_de_manana(mensaje) else "saludo"
+        ) or random.choice(GREETINGS)
+
     # pide ayuda
-    if any(s in msg for s in ["ayuda", "help", "qué puedes", "qué haces", "cómo"]):
-        return HELP_OFFERS[random.randint(0, 2)]
-    
+    if any(s in msg for s in ["ayuda", "help", "qué puedes", "que puedes", "qué haces",
+                              "que haces", "qué sabes", "que sabes"]):
+        return random.choice(HELP_OFFERS)
+
     # tema afinación
-    if any(s in msg for s in ["afin", "tuner", "afinar", "frecuencia"]):
-        return "Para afinar: toca la cuerda y observa los cents. Menos de 5 = afinado. 🎵"
-    
-    # tema acordes
-    if any(s in msg for s in ["acorde", "chord", "acordes", "am", "em", "c", "g", "d"]):
+    if any(s in msg for s in ["afin", "tuner", "frecuencia"]):
+        return ("Para afinar: abre el Afinador, toca una cuerda y mira los cents. "
+                "Entre -5 y +5 ya está afinada. Si marca negativo aprieta la clavija; "
+                "si marca positivo, afloja. 🎵")
+
+    # tema acordes ("am"/"c"/"g"/"d" solo como palabra exacta: antes "te amo"
+    # disparaba esta regla por el "am" interno)
+    if ("acorde" in msg or "chord" in msg or
+            tokens & {"am", "em", "c", "g", "d", "do", "re", "mi", "fa", "sol", "la", "si"}):
         return f"Nivel {nivel}: Practica acordes básicos: C, G, D, Am, Em. Son la base. 🎸"
-    
+
     # ejercicios
     if any(s in msg for s in ["ejercicio", "practicar", "practica", "ejerc"]):
         plans = {
@@ -127,23 +150,18 @@ def generate_chat_response(mensaje: str, nivel: str = "principiante") -> str:
             "avanzado": "Ejercicios: técnica, velocidad, canciones completas."
         }
         return plans.get(nivel, plans["principiante"])
-    
+
     # pregunta de nivel
-    if any(s in msg for s in ["nivel", "soy", "experiencia", "llevo"]):
+    if any(s in msg for s in ["nivel", "experiencia", "llevo"]) or "soy" in tokens:
         nivel_detectado = evaluate_user_level(mensaje)
         return f"Entendido. Eres nivel {nivel_detectado}. ¡Trabajaremos en eso! 🎯"
-    
+
     # despedidas
-    if any(s in msg for s in ["adiós", "bye", "salir", "nos vemos"]):
-        return "¡Hasta luego! Sigue practicando. 🎸"
-    
-    # si no entiendo nada
-    responses = [
-        "¡Interesante! Cuéntame más sobre lo que quieres practicar. 🎵",
-        "¿Te refieres a digitación, ritmo o teoría? Dime para ayudarte mejor. 🎸",
-        "Practiquemos juntos. Dime qué área te interesa. 🎯"
-    ]
-    return responses[random.randint(0, 2)]
+    if any(s in msg for s in ["adiós", "adios", "bye", "salir", "nos vemos"]):
+        return conversacion.responder("despedida") or "¡Hasta luego! Sigue practicando. 🎸"
+
+    # sin intención clara: fallback amable en personaje (nunca "no entendí")
+    return conversacion.responder("fallback") or HELP_OFFERS[0]
 
 
 def generate_tutor_response(mensaje: str, ctx: dict) -> str:

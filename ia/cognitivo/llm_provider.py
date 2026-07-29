@@ -17,6 +17,7 @@ Contrato:
 import os
 
 from domain import habilidades as habilidades_dominio
+from ia.cognitivo import conversacion
 from services.wilfredo_service import generate_chat_response
 
 
@@ -39,6 +40,13 @@ class ReglasProvider(LLMProvider):
         intencion = ctx.get("intencion", "general")
         nombre = ctx.get("nombre")
         saludo_nombre = f", {nombre}" if nombre else ""
+
+        # Small talk: la capa social responde con variantes en personaje
+        # (agradecimiento, despedida, cariño, halago, motivación, etc.).
+        if intencion in conversacion.SOCIALES:
+            r = conversacion.responder(intencion, ctx, historial)
+            if r:
+                return r
 
         if intencion == "teoria" and ctx.get("conocimiento"):
             k = ctx["conocimiento"][0]
@@ -122,20 +130,24 @@ class ReglasProvider(LLMProvider):
                     f"cerebro aprende de la precisión, no de la prisa. 💪{tip}")
 
         if intencion == "saludo":
-            memoria = ""
-            u = ctx.get("ultimo_intento")
-            if u:
-                memoria = f" La última vez practicaste «{u['ejercicio']}»."
-            racha = ctx.get("racha", 0)
-            r = f" ¡{racha} días de racha! 🔥" if racha >= 2 else ""
             # Memoria conversacional mínima: no repetir el mismo saludo seguido.
             ya_saludo = any(
-                t.get("rol") == "riff" and "¡Hola" in (t.get("texto") or "")
+                t.get("rol") == "riff" and
+                any(m in (t.get("texto") or "") for m in ("¡Hola", "Buenos días", "¡Buenas"))
                 for t in historial[-4:]
             )
             if ya_saludo:
                 return f"¡Seguimos{saludo_nombre}! ¿Practicamos o tienes alguna duda? 🎸"
-            return f"¡Hola{saludo_nombre}! 🎸{r}{memoria} ¿Practicamos?"
+            clave = "saludo_manana" if conversacion.es_saludo_de_manana(mensaje) else "saludo"
+            base = conversacion.responder(clave, ctx, historial) or f"¡Hola{saludo_nombre}! 🎸"
+            extras = []
+            racha = ctx.get("racha", 0)
+            if racha >= 2:
+                extras.append(f"¡Llevas {racha} días de racha! 🔥")
+            u = ctx.get("ultimo_intento")
+            if u:
+                extras.append(f"Por cierto, la última vez practicaste «{u['ejercicio']}».")
+            return " ".join([base] + extras)
 
         # General: si hay conocimiento relevante, úsalo; si no, reglas clásicas.
         if ctx.get("conocimiento"):

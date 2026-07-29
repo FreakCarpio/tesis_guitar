@@ -13,7 +13,7 @@ contexto sirve para el ReglasProvider de hoy y para un LLM futuro
 """
 
 from domain import conocimiento
-from ia.cognitivo import adaptive_engine, learning_profile
+from ia.cognitivo import adaptive_engine, conversacion, learning_profile
 
 INTENCIONES = {
     "que_practico": ["qué practico", "que practico", "qué hago", "que hago", "recomien",
@@ -27,12 +27,28 @@ INTENCIONES = {
     "saludo": ["hola", "buenos", "buenas", "hello", "hey", "ey"],
 }
 
+# Claves de una sola palabra corta: solo cuentan como palabra exacta
+# ("ey" no debe dispararse dentro de "ley").
+_CLAVES_TOKEN = {"hola", "hello", "hey", "ey"}
+
 
 def detectar_intencion(mensaje: str) -> str:
+    # 1) Small talk (capa social): frases cortas tipo "gracias", "te amo",
+    #    "adiós". Se evalúa primero porque son mensajes completos en sí
+    #    mismos y no deben caer en teoría/general.
+    social = conversacion.detectar(mensaje)
+    if social:
+        return social
+
     msg = mensaje.lower()
+    tokens = set(msg.split())
     for intencion, claves in INTENCIONES.items():
-        if any(c in msg for c in claves):
-            return intencion
+        for c in claves:
+            if c in _CLAVES_TOKEN:
+                if c in tokens:
+                    return intencion
+            elif c in msg:
+                return intencion
     # Teoría/técnica: si la Base de Conocimiento tiene algo relevante.
     if conocimiento.buscar(mensaje, k=1):
         return "teoria"
