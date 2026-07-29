@@ -375,9 +375,13 @@ def buscar(consulta: str, nivel: str | None = None, k: int = 3) -> list[dict]:
         for p in palabras:
             if p in titulo:
                 score += 1.0
-        if nivel and e["nivel"] == nivel:
-            score += 0.5
+        # El bono por nivel solo desempata entre entradas que YA
+        # coincidieron: sin coincidencia real la entrada no debe entrar
+        # (si no, cualquier pregunta sin match devolvía una entrada
+        # arbitraria del nivel del usuario en vez de caer al fallback).
         if score > 0:
+            if nivel and e["nivel"] == nivel:
+                score += 0.5
             puntuadas.append((score, e))
 
     puntuadas.sort(key=lambda x: (-x[0], x[1]["id"]))
