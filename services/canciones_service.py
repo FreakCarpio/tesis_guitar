@@ -9,18 +9,27 @@ Fuentes y qué aporta cada una (verificado empíricamente):
 - Songsterr /api/songs?pattern&size&from : búsqueda paginada
 - Songsterr /api/meta/{songId}           : metadata, pistas, afinación,
                                            dificultad, tags, videos, deep-link
+- Songsterr /api/chords/{songId}         : 200 si la canción tiene hoja de
+                                           acordes de la comunidad, 404 si no
+- Songsterr página de acordes (SSR)      : la hoja ChordPro completa viaja
+                                           embebida como JSON en el estado
+                                           servido de /a/wsa/…-chords-s{id}
+                                           (secciones, acordes por línea de
+                                           letra, afinación y capo)
 - iTunes Search API (sin key)            : portada real, género, duración
 
-No disponibles en ninguna fuente gratuita (se omiten): tempo, tonalidad,
-capo, letra, secciones. La tablatura/acordes reales viven tras un CDN
-firmado de Songsterr: solo deep-link.
+No disponibles en ninguna fuente gratuita (se omiten): tempo, tonalidad.
+La TABLATURA (nota a nota) sí sigue tras un CDN firmado: solo deep-link.
 """
 
+import http.client
+import json
+import urllib.parse
 from datetime import datetime, timedelta, timezone
 
 import requests
 
-from database import busqueda_cache, cancion_cache
+from database import acordes_cache, busqueda_cache, cancion_cache
 
 SONGSTERR_BASE = "https://www.songsterr.com"
 ITUNES_BASE = "https://itunes.apple.com"
@@ -241,3 +250,182 @@ def obtener_detalle(song_id: int, forzar: bool = False) -> dict | None:
         upsert=True,
     )
     return detalle
+
+
+# --------------------------------------------------------------------------
+# Acordes reales (hoja de acordes de la comunidad Songsterr)
+# --------------------------------------------------------------------------
+
+def _obtener_html(url: str, max_redirects: int = 3) -> str | None:
+    """GET de una página HTML de Songsterr saltando respuestas 1xx.
+
+    Cloudflare antepone "103 Early Hints" al 200 de las páginas (no de la
+    API JSON) y el http.client de Python —el que usan requests/urllib—
+    trata ese 103 como respuesta final con cuerpo vacío. Aquí se leen los
+    estados informativos hasta llegar a la respuesta real y se siguen los
+    redirects del slug canónico. Devuelve None si no se llega a un 200.
+    """
+    for _ in range(max_redirects + 1):
+        parte = urllib.parse.urlsplit(url)
+        conn = http.client.HTTPSConnection(parte.netloc, timeout=TIMEOUT_SEG)
+        try:
+            ruta = parte.path + (f"?{parte.query}" if parte.query else "")
+            conn.request("GET", ruta, headers={
+                "User-Agent": "Mozilla/5.0",
+                "Accept": "text/html",
+                "Accept-Encoding": "identity",
+            })
+            resp = conn.getresponse()
+            while 100 <= resp.status < 200:
+                # 1xx no lleva cuerpo: la respuesta real sigue en el socket.
+                resp.read()
+                resp = http.client.HTTPResponse(conn.sock, method="GET")
+                resp.begin()
+            if resp.status in (301, 302, 303, 307, 308):
+                destino = resp.getheader("Location")
+                if not destino:
+                    return None
+                url = urllib.parse.urljoin(url, destino)
+                continue
+            if resp.status != 200:
+                return None
+            return resp.read().decode("utf-8", errors="replace")
+        except (OSError, http.client.HTTPException):
+            return None
+        finally:
+            conn.close()
+    return None
+
+
+def _nombre_acorde(chord: dict) -> str | None:
+    """Nombre legible de un acorde del ChordPro de Songsterr:
+    baseNote + sufijo (+ bajo si es acorde con inversión): Em7, G, D/F#."""
+    base = (chord.get("baseNote") or {}).get("name")
+    if not base:
+        return None
+    nombre = base + ((chord.get("chordType") or {}).get("suffix") or "")
+    bajo = (chord.get("firstNote") or {}).get("name")
+    if bajo and bajo != base:
+        nombre += f"/{bajo}"
+    return nombre
+
+
+def _extraer_chordpro(html: str) -> list | None:
+    """Extrae el array de tokens ChordPro embebido en el estado SSR de la
+    página de acordes ("chordpro":{"current":[…]}). None si no aparece."""
+    marca = '"chordpro":{"current":'
+    i = html.find(marca)
+    if i < 0:
+        return None
+    j = html.find("[", i + len(marca) - 1)
+    if j < 0:
+        return None
+    try:
+        tokens, _ = json.JSONDecoder().raw_decode(html, j)
+    except ValueError:
+        return None
+    return tokens if isinstance(tokens, list) else None
+
+
+def _parsear_chordpro(tokens: list) -> dict | None:
+    """Convierte los tokens ChordPro en el contenido de práctica:
+
+    secciones [{nombre, lineas:[{texto, acorde}]}] respetando el ORDEN real
+    (cada acorde de una línea sale como línea propia con el fragmento de
+    letra que le sigue), más afinación, capo y la progresión (acordes
+    únicos en orden de aparición). None si no hay ningún acorde."""
+    secciones: list[dict] = []
+    actual: dict | None = None
+    afinacion: str | None = None
+    capo: int | None = None
+    progresion: list[str] = []
+
+    for token in tokens:
+        tipo = token.get("type")
+        if tipo == "tuning":
+            afinacion = token.get("text") or None
+        elif tipo == "capo":
+            try:
+                capo = int(token.get("text"))
+            except (TypeError, ValueError):
+                pass
+        elif tipo == "section":
+            actual = {"nombre": token.get("text") or f"Parte {len(secciones) + 1}",
+                      "lineas": []}
+            secciones.append(actual)
+        elif tipo == "line":
+            if actual is None:
+                actual = {"nombre": "Canción", "lineas": []}
+                secciones.append(actual)
+            texto_previo = ""
+            hubo_acorde = False
+            for bloque in token.get("line") or []:
+                if bloque.get("type") == "chord":
+                    nombre = _nombre_acorde(bloque.get("chord") or {})
+                    if nombre is None:
+                        continue
+                    # El texto suelto ANTES del primer acorde de la línea se
+                    # arrastra a la línea de ese acorde (no cambia el orden).
+                    actual["lineas"].append({"texto": texto_previo, "acorde": nombre})
+                    texto_previo = ""
+                    hubo_acorde = True
+                    if nombre not in progresion:
+                        progresion.append(nombre)
+                elif bloque.get("type") == "text":
+                    trozo = bloque.get("text") or ""
+                    if hubo_acorde:
+                        actual["lineas"][-1]["texto"] += trozo
+                    else:
+                        texto_previo += trozo
+            if not hubo_acorde and texto_previo.strip():
+                actual["lineas"].append({"texto": texto_previo, "acorde": None})
+
+    secciones = [s for s in secciones if s["lineas"]]
+    if not progresion or not secciones:
+        return None
+    for s in secciones:
+        for linea in s["lineas"]:
+            linea["texto"] = linea["texto"].strip()
+    return {
+        "secciones": secciones,
+        "progresion": progresion,
+        "afinacion": afinacion,
+        "capo": capo,
+    }
+
+
+def obtener_acordes(song_id: int) -> dict | None:
+    """Acordes REALES de una canción (hoja de la comunidad Songsterr),
+    cacheados 7 días. Devuelve None si la canción no tiene acordes
+    publicados; los fallos transitorios de red/parseo NO se cachean (para
+    no marcar como inexistente algo que sí existe)."""
+    doc = acordes_cache.find_one({"song_id": song_id})
+    if _cache_vigente(doc, TTL_DETALLE):
+        return doc["data"] or None
+
+    r = requests.get(f"{SONGSTERR_BASE}/api/chords/{song_id}", timeout=TIMEOUT_SEG)
+    if r.status_code == 404:
+        # Confirmado por el proveedor: esta canción NO tiene acordes.
+        acordes_cache.update_one(
+            {"song_id": song_id},
+            {"$set": {"song_id": song_id, "data": None, "fecha": _ahora().isoformat()}},
+            upsert=True,
+        )
+        return None
+    r.raise_for_status()
+
+    # El slug del artista/título se resuelve solo: cualquier slug con el
+    # songId correcto redirige a la página canónica.
+    html = _obtener_html(f"{SONGSTERR_BASE}/a/wsa/song-chords-s{song_id}")
+    tokens = _extraer_chordpro(html) if html else None
+    data = _parsear_chordpro(tokens) if tokens else None
+    if data is None:
+        # Había hoja según la API pero no se pudo extraer: no cachear.
+        return None
+
+    acordes_cache.update_one(
+        {"song_id": song_id},
+        {"$set": {"song_id": song_id, "data": data, "fecha": _ahora().isoformat()}},
+        upsert=True,
+    )
+    return data
